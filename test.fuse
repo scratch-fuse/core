@@ -1,0 +1,118 @@
+// Example content for Scratch FUSE script
+
+// 未来将改成内嵌定义
+namespace event = {
+  greenflag = {
+    "opcode": "event_whenflagclicked",
+    "type": "hat",
+    "args": []
+  }
+}
+
+namespace control = {
+  // 一般不用 repeat 所以 repeat 会被归类到 control.repeat 定义。
+  repeat = {
+    "opcode": "control_repeat",
+    "type": "conditional",
+    "args": [
+      {
+        "name": "TIMES",
+        "type": "any"
+      },
+      {
+        "name": "SUBSTACK",
+        "type": "substack"
+      }
+    ]
+  },
+  wait = {
+    "opcode": "control_wait",
+    "type": "command",
+    "args": [
+      {
+        "name": "DURATION",
+        "type": "any"
+      }
+    ]
+  }
+}
+
+namespace looks = {
+  say = {
+    "opcode": "looks_sayforsecs",
+    "type": "command",
+    "args": [
+      {
+        "name": "MESSAGE",
+        "type": "string"
+      },
+      {
+        "name": "SECS",
+        "type": "any"
+      }
+    ]
+  }
+}
+
+namespace code = {
+  custom_extension_hat = {
+    "opcode": "example_hat",
+    "type": "hat",
+    "args": [
+      {
+        "name": "NUM",
+        "type": "any",
+        "default": "10" // Optional
+      },
+      {
+        "name": "BOOLEAN",
+        "type": "boolean",
+        "default": true
+      }
+      {
+        "name": "FIELD",
+        "type": "field",
+        "menu": [
+          ["option1", "translated_option1"],
+          ["option2", "translated_option2"]
+        ],
+        "allowReporters": true // Optional, allow reporters in this argument
+      }
+    ]
+  }
+}
+
+let awa = 42
+global test = [1, 2, 3]
+fn start(id: any, isExtension: bool) once -> any { // Return type is optional, for unsupported deserializer it will be ignored; once specifier means this function will run without screen refresh
+  if (id == "original") {
+    control.repeat(10) {
+      looks.say("Hello world!", 3)
+    }
+    return "Original Scratch" .. isExtension
+  }
+  if (isExtension) {
+    return "Extension Scratch"
+  }
+}
+
+fn drop(result: any) -> void {
+  return // void return type can be omitted
+}
+
+fn initalize() -> void {
+  awa = 100
+  test.push(4)
+}
+
+event.greenflag {
+  initalize()
+  drop(start("original", false))
+}
+
+code.custom_extension_hat(10, true, "option1") {
+  awa = awa + 1 // Should not pass compile
+  test.push(awa[1])
+  test[1] = 1
+  control.wait(1)
+}
