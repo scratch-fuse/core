@@ -32,6 +32,6 @@ fn main() once -> void {
   }
 }
 
-events.start {
+event.start {
   main()
 }

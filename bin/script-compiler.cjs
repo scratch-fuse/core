@@ -20,7 +20,7 @@ const {
   mergeWorkspaces,
   Builtins,
   mergeNamespace
-} = require('../dist/index.cjs')
+} = require('../dist/index.js')
 
 /**
  * Create a default Scratch 3.0 project structure

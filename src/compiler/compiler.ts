@@ -330,7 +330,7 @@ export class Scope {
       'includes',
       (v: Reporter, rhs: (Reporter | string)[]) => {
         if (rhs.length !== 1)
-          throw new Error('contains expects exactly one argument')
+          throw new Error('includes expects exactly one argument')
         return {
           type: 'bool',
           value: {
