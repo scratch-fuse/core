@@ -1,0 +1,37 @@
+// Example content for Scratch FUSE script
+
+@export("// [description]") fn description(description: any) once -> void {
+}
+
+@export("drop [value]") fn drop(value: any) once -> void {
+  description(value) // To avoid compiler optimizing away the call to description
+}
+
+@export("wait 1 frame") fn yield() once -> void {
+  drop(translate.getTranslate("1", ""))
+}
+
+@export("last timestamp") let last_timestamp = 0
+
+@export("current timestamp") fn current_timestamp() once -> any {
+  return sensing.daysSince2000() * 86400 * 1000
+}
+
+@export("current timestamp") fn calculate_fps() once -> any {
+  last_timestamp = current_timestamp()
+  yield()
+  return 1000 / (current_timestamp() - last_timestamp)
+}
+
+@export("current fps") global fps = 0
+
+fn main() once -> void {
+  fps.show()
+  loop {
+    fps = calculate_fps()
+  }
+}
+
+events.start {
+  main()
+}

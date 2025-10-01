@@ -1,4 +1,4 @@
-import tsup from 'tsup';
+import tsup from 'tsup'
 
 export default tsup.defineConfig({
   entry: ['src/index.ts'],
@@ -8,5 +8,6 @@ export default tsup.defineConfig({
   clean: true,
   minify: false,
   target: 'esnext',
-  outDir: 'dist'
-});
+  outDir: 'dist',
+  loader: { '.fuse': 'text' }
+})

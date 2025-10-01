@@ -2,18 +2,43 @@
   "name": "scratch-fuse",
   "version": "1.0.0",
   "description": "Codename fuse -- to serialize Scratch blocks to scripts.",
-  "main": "index.js",
-  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsup src/index.ts --watch",
-    "build": "tsup src/index.ts"
+    "lint:type": "tsc --noEmit",
+    "build": "tsup src/index.ts",
+    "format": "prettier --write ."
   },
   "author": "FurryR",
   "license": "MPL-2.0",
   "devDependencies": {
     "@types/node": "^24.5.2",
+    "prettier": "^3.6.2",
     "tsup": "^8.5.0",
     "typescript": "^5.9.2"
-  }
+  },
+  "homepage": "https://github.com/FurryR/scratch-fuse#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FurryR/scratch-fuse.git"
+  },
+  "bugs": {
+    "url": "https://github.com/FurryR/scratch-fuse/issues"
+  },
+  "keywords": [
+    "scratch",
+    "blocks",
+    "compiler",
+    "serializer",
+    "script",
+    "fuse"
+  ],
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ]
 }
