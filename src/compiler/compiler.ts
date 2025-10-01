@@ -30,7 +30,8 @@ import {
   BlockStatement,
   DecoratorStatement,
   NamespaceDeclaration,
-  IncrementStatement
+  IncrementStatement,
+  ForStatement
 } from '../parser'
 
 import { ErrorList } from '../util/error'
@@ -802,41 +803,7 @@ export class Compiler {
   private parseLiteralExpression(expr: LiteralExpression): TypedValue {
     const value = expr.value
     if (typeof value === 'boolean') {
-      if (value)
-        return {
-          type: 'bool',
-          value: {
-            opcode: 'operator_not',
-            fields: {},
-            inputs: {
-              OPERAND: {
-                type: 'bool',
-                value: {
-                  opcode: 'operator_not',
-                  fields: {},
-                  inputs: {}
-                }
-              }
-            }
-          }
-        }
-      return {
-        type: 'bool',
-        value: {
-          opcode: 'operator_not',
-          fields: {},
-          inputs: {
-            OPERAND: {
-              type: 'bool',
-              value: {
-                opcode: 'operator_not',
-                fields: {},
-                inputs: {}
-              }
-            }
-          }
-        }
-      }
+      return this.getBooleanLiteral(value)
     } else {
       return {
         type: 'any',
@@ -1684,6 +1651,8 @@ export class Compiler {
           stmt as WhileStatement,
           functionReturnType
         )
+      case 'ForStatement':
+        return this.parseForStatement(stmt as ForStatement, functionReturnType)
       case 'UntilStatement':
         return this.parseUntilStatement(
           stmt as UntilStatement,
@@ -2261,6 +2230,81 @@ export class Compiler {
         inputs: {
           CONDITION: { type: 'bool', value: condition.value as Reporter },
           SUBSTACK: { type: 'substack', value: bodyBlocks }
+        }
+      }
+    ]
+  }
+
+  private getBooleanLiteral(value: boolean): TypedValue {
+    if (value)
+      return {
+        type: 'bool',
+        value: {
+          opcode: 'operator_not',
+          fields: {},
+          inputs: {}
+        }
+      }
+    return {
+      type: 'bool',
+      value: {
+        opcode: 'operator_not',
+        fields: {},
+        inputs: {
+          OPERAND: {
+            type: 'bool',
+            value: {
+              opcode: 'operator_not',
+              fields: {},
+              inputs: {}
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private parseForStatement(
+    stmt: ForStatement,
+    functionReturnType: 'bool' | 'any' | 'void' | null
+  ): Block[] {
+    const condition = stmt.condition
+      ? this.parseExpr(stmt.condition)
+      : this.getBooleanLiteral(true)
+    this.ensureBooleanType(
+      condition,
+      'While condition must be boolean',
+      stmt.line,
+      stmt.column
+    )
+
+    const init = stmt.init
+      ? this.parseStatement(stmt.init, functionReturnType)
+      : []
+    const increment = stmt.increment
+      ? this.parseStatement(stmt.increment, functionReturnType)
+      : []
+
+    const bodyBlocks =
+      stmt.body.type === 'BlockStatement'
+        ? this.parseBlockStatement(
+            stmt.body as BlockStatement,
+            functionReturnType
+          )
+        : this.parseStatement(stmt.body, functionReturnType)
+
+    // Convert into while loop
+    return [
+      ...init,
+      {
+        opcode: 'control_while',
+        fields: {},
+        inputs: {
+          CONDITION: { type: 'bool', value: condition.value as Reporter },
+          SUBSTACK: {
+            type: 'substack',
+            value: [...bodyBlocks, ...increment]
+          }
         }
       }
     ]

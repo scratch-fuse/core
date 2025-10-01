@@ -109,6 +109,15 @@ export interface WhileStatement extends Statement {
   body: Statement
 }
 
+export interface ForStatement extends Statement {
+  // for (init; condition; increment) { body } // C-style for, syntactic sugar of while
+  type: 'ForStatement'
+  init?: AssignmentStatement | IncrementStatement
+  condition?: Expression
+  increment?: AssignmentStatement | IncrementStatement
+  body: Statement
+}
+
 export interface UntilStatement extends Statement {
   type: 'UntilStatement'
   condition: Expression
@@ -306,6 +315,7 @@ export class Parser {
                 'global',
                 'if',
                 'while',
+                'for',
                 'until',
                 'loop',
                 'return'
@@ -683,6 +693,8 @@ export class Parser {
             return this.parseIfStatement()
           case 'while':
             return this.parseWhileStatement()
+          case 'for':
+            return this.parseForStatement()
           case 'until':
             return this.parseUntilStatement()
           case 'loop':
@@ -722,7 +734,7 @@ export class Parser {
         if (this.matchOperator('=', '+=', '-=', '*=', '/=', '%=', '..=')) {
           const operator = this.previous().value
           const right = this.parseExpression()
-          this.consumeStatementTerminator()
+          // this.consumeStatementTerminator()
           return {
             type: 'AssignmentStatement',
             left: expr,
@@ -733,7 +745,7 @@ export class Parser {
           } as AssignmentStatement
         } else if (this.matchOperator('++', '--')) {
           const operator = this.previous().value
-          this.consumeStatementTerminator()
+          // this.consumeStatementTerminator()
           return {
             type: 'IncrementStatement',
             operator,
@@ -840,7 +852,7 @@ export class Parser {
 
     const initializer = this.parseExpression()
 
-    this.consumeStatementTerminator()
+    // this.consumeStatementTerminator()
     return {
       type: 'VariableDeclaration',
       name: name,
@@ -888,6 +900,65 @@ export class Parser {
     } as WhileStatement
   }
 
+  private parseForStatement(): ForStatement {
+    const start = this.previous()
+    this.consumePunctuation('(', "Expected '(' after 'for'")
+
+    // Parse init statement (can be variable declaration or assignment)
+    let init: Statement | undefined
+    if (!this.check(TokenType.Punctuation) || this.peek().value !== ';') {
+      init = this.parseStatement()
+      if (!['AssignmentStatement', 'IncrementStatement'].includes(init.type)) {
+        throw new ParserError(
+          'For loop init must be an assignment or increment statement',
+          start.line,
+          start.column
+        )
+      }
+    } else {
+      this.advance() // consume ';'
+    }
+
+    // Parse condition expression
+    let condition: Expression | undefined
+    if (!this.check(TokenType.Punctuation) || this.peek().value !== ';') {
+      condition = this.parseExpression()
+    } else {
+      this.advance() // consume ';'
+    }
+
+    // Parse increment statement
+    let increment: Statement | undefined
+    if (!this.check(TokenType.Punctuation) || this.peek().value !== ')') {
+      increment = this.parseStatement()
+      if (
+        !['AssignmentStatement', 'IncrementStatement'].includes(increment.type)
+      ) {
+        throw new ParserError(
+          'For loop increment must be an increment statement',
+          start.line,
+          start.column
+        )
+      }
+    }
+
+    this.consumePunctuation(')', "Expected ')' after for increment")
+    const body = this.parseStatementOrBlock()
+
+    return {
+      type: 'ForStatement',
+      init: init as AssignmentStatement | IncrementStatement | undefined,
+      condition,
+      increment: increment as
+        | AssignmentStatement
+        | IncrementStatement
+        | undefined,
+      body,
+      line: start.line,
+      column: start.column
+    } as ForStatement
+  }
+
   private parseUntilStatement(): UntilStatement {
     this.consumePunctuation('(', "Expected '(' after 'until'")
     const condition = this.parseExpression()
@@ -929,7 +1000,7 @@ export class Parser {
       }
     }
 
-    this.consumeStatementTerminator()
+    // this.consumeStatementTerminator()
     return {
       type: 'ReturnStatement',
       value,
@@ -960,20 +1031,13 @@ export class Parser {
 
   private parseExpressionStatement(): ExpressionStatement {
     const expr = this.parseExpression()
-    this.consumeStatementTerminator()
+    // this.consumeStatementTerminator()
     return {
       type: 'ExpressionStatement',
       expression: expr,
       line: expr.line,
       column: expr.column
     } as ExpressionStatement
-  }
-
-  private consumeStatementTerminator(): void {
-    // Optional semicolon or newline
-    if (!this.isEof()) {
-      this.match(TokenType.Eol)
-    }
   }
 
   private parseStatementOrBlock(): Statement {

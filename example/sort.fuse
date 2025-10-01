@@ -22,21 +22,15 @@ global temp = 0
 fn sort() once -> void {
   // Sort the array using bubble sort
   n = array.length
-  i = 0
-  j = 0
-  temp = 0
-  while (i <= n) {
-    j = 0
-    while (j <= n - i - 1) {
-      if (array[j] > array[j + 1]) {
-        // Swap array[j] and array[j + 1]
-        temp = array[j]
-        array[j] = array[j + 1]
-        array[j + 1] = temp
+  for (i = 1; i <= n; i++) {
+    for (j = 1; j <= n - i; j++) {
+      if (array[j - 1] > array[j]) {
+        // Swap array[j-1] and array[j]
+        temp = array[j - 1]
+        array[j - 1] = array[j]
+        array[j] = temp
       }
-      j++
     }
-    i++
   }
 }
 
