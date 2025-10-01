@@ -56,7 +56,11 @@ const operators = new Set([
   '+=',
   '-=',
   '*=',
-  '/='
+  '/=',
+  '%=',
+  '..=',
+  '++',
+  '--'
 ])
 
 const punctuation = new Set(['(', ')', '{', '}', '[', ']', ',', ':', '@'])
@@ -360,12 +364,15 @@ export class Lexer {
   private readOperatorOrPunctuation(): Token {
     const startColumn = this.column
     let value = this.advance()
-    // Check for multi-character operators
-    if (!this.isAtEnd()) {
-      const twoCharOp = value + this.peek()
-      if (operators.has(twoCharOp)) {
-        value = twoCharOp
+    // Check for multi-character operators (greedy matching)
+    while (!this.isAtEnd()) {
+      const nextChar = this.peek()
+      const potentialOp = value + nextChar
+      if (operators.has(potentialOp)) {
+        value = potentialOp
         this.advance()
+      } else {
+        break
       }
     }
     if (operators.has(value)) {

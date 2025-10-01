@@ -90,6 +90,12 @@ export interface AssignmentStatement extends Statement {
   right: Expression
 }
 
+export interface IncrementStatement extends Statement {
+  type: 'IncrementStatement'
+  operator: string
+  target: Expression
+}
+
 export interface IfStatement extends Statement {
   type: 'IfStatement'
   condition: Expression
@@ -474,7 +480,7 @@ export class Parser {
   }
 
   private parseUnary(): Expression {
-    if (this.matchOperator('!', '-')) {
+    if (this.matchOperator('!', '-', '+')) {
       const op = this.previous().value
       const operand = this.parseUnary()
       return {
@@ -701,8 +707,19 @@ export class Parser {
       // Check for assignment
       const checkpoint = this.current
       try {
+        if (this.matchOperator('++', '--')) {
+          const operator = this.previous().value
+          const expr = this.parseExpression()
+          return {
+            type: 'IncrementStatement',
+            operator,
+            target: expr,
+            line: expr.line,
+            column: expr.column
+          } as IncrementStatement
+        }
         const expr = this.parseExpression()
-        if (this.matchOperator('=', '+=', '-=', '*=', '/=')) {
+        if (this.matchOperator('=', '+=', '-=', '*=', '/=', '%=', '..=')) {
           const operator = this.previous().value
           const right = this.parseExpression()
           this.consumeStatementTerminator()
@@ -714,6 +731,16 @@ export class Parser {
             line: expr.line,
             column: expr.column
           } as AssignmentStatement
+        } else if (this.matchOperator('++', '--')) {
+          const operator = this.previous().value
+          this.consumeStatementTerminator()
+          return {
+            type: 'IncrementStatement',
+            operator,
+            target: expr as IdentifierExpression,
+            line: expr.line,
+            column: expr.column
+          } as IncrementStatement
         }
         // Not an assignment, treat as expression statement
         this.current = checkpoint

@@ -29,7 +29,8 @@ import {
   VariableDeclaration,
   BlockStatement,
   DecoratorStatement,
-  NamespaceDeclaration
+  NamespaceDeclaration,
+  IncrementStatement
 } from '../parser'
 
 import { ErrorList } from '../util/error'
@@ -184,25 +185,24 @@ export class Scope {
           }
         ]
       }
-    ]
-  ])
-  private static listReps = new Map<string, ListReporter>([
+    ],
     [
-      'length',
+      'clear',
       (v: Variable, rhs: (Reporter | string)[]) => {
-        if (rhs.length !== 0) throw new Error('length expects no arguments')
-        return {
-          type: 'any',
-          value: {
-            opcode: 'data_lengthoflist',
+        if (rhs.length !== 0) throw new Error('clear expects no arguments')
+        return [
+          {
+            opcode: 'data_deletealloflist',
             fields: {
               LIST: v.exportName ?? v.name
             },
             inputs: {}
           }
-        }
+        ]
       }
-    ],
+    ]
+  ])
+  private static listReps = new Map<string, ListReporter>([
     [
       'includes',
       (v: Variable, rhs: (Reporter | string)[]) => {
@@ -1135,6 +1135,18 @@ export class Compiler {
             }
           }
         }
+      case '+':
+        return {
+          type: 'any',
+          value: {
+            opcode: 'operator_add',
+            fields: {},
+            inputs: {
+              NUM1: { type: 'any', value: '0' },
+              NUM2: { type: 'any', value: operand.value }
+            }
+          }
+        }
       default:
         throw new CompilerError(
           `Unsupported unary operator: ${expr.operator}`,
@@ -1663,6 +1675,8 @@ export class Compiler {
         )
       case 'AssignmentStatement':
         return this.parseAssignmentStatement(stmt as AssignmentStatement)
+      case 'IncrementStatement':
+        return this.parseIncrementStatement(stmt as IncrementStatement)
       case 'IfStatement':
         return this.parseIfStatement(stmt as IfStatement, functionReturnType)
       case 'WhileStatement':
@@ -1890,170 +1904,284 @@ export class Compiler {
     )
   }
 
-  private parseAssignmentStatement(stmt: AssignmentStatement): Block[] {
-    if (stmt.left.type === 'Identifier') {
+  private operateVar(
+    varName: string,
+    operator: string,
+    value: TypedValue,
+    line: number,
+    column: number
+  ): Block[] {
+    switch (operator) {
+      case '=':
+        return this.globalScope.set(varName, value.value)
+      case '+=':
+        return this.globalScope.add(varName, value.value)
+      case '-=':
+        return this.globalScope.add(varName, {
+          opcode: 'operator_subtract',
+          fields: {},
+          inputs: {
+            NUM1: { type: 'any', value: '0' },
+            NUM2: { type: 'any', value: value.value }
+          }
+        })
+      // *= -> = var * value, /= -> = var / value, etc.
+      case '*=':
+      case '/=':
+      case '%=':
+      case '..=': {
+        const operatorMap: Record<string, string> = {
+          '*': 'operator_multiply',
+          '/': 'operator_divide',
+          '%': 'operator_mod',
+          '.': 'operator_join'
+        }
+        const op = operator[0] // Get the operator character
+        let varValue: Reporter
+        try {
+          const val = this.globalScope.get(varName)
+          if (!val) {
+            throw new CompilerError(
+              `Variable ${varName} not found for operation`,
+              0,
+              0
+            )
+          }
+          varValue = val
+        } catch (error) {
+          throw new CompilerError((error as Error).message, line, column)
+        }
+        const operationBlock = {
+          opcode: operatorMap[op],
+          fields: {},
+          inputs: {
+            NUM1: { type: 'any', value: varValue },
+            NUM2: { type: 'any', value: value.value }
+          }
+        } satisfies Reporter
+        return this.globalScope.set(varName, operationBlock)
+      }
+      default:
+        throw new CompilerError(
+          `Unsupported operator: ${operator}`,
+          line,
+          column
+        )
+    }
+  }
+
+  private operateComputed(
+    memberExpr: MemberExpression,
+    operator: string,
+    value: TypedValue,
+    line: number,
+    column: number
+  ): Block[] {
+    if (!memberExpr.computed) {
+      throw new CompilerError(
+        'Dot notation assignments are not supported',
+        line,
+        column
+      )
+    }
+
+    if (memberExpr.object.type !== 'Identifier') {
+      throw new CompilerError(
+        'Only simple computed assignments are supported',
+        line,
+        column
+      )
+    }
+
+    const objectName = (memberExpr.object as IdentifierExpression).name
+    const varType = this.globalScope.typeof(objectName)
+
+    if (varType !== 'list') {
+      throw new CompilerError(
+        'Computed assignment is only supported for lists',
+        line,
+        column
+      )
+    }
+
+    switch (operator) {
+      case '=': {
+        const index = this.parseExpr(memberExpr.property)
+
+        // Use list.replace(index, value)
+        try {
+          const methodResult = this.globalScope.stmtMethod(
+            objectName,
+            'replace',
+            [index.value, value.value]
+          )
+          if (methodResult) {
+            return methodResult
+          }
+          throw new CompilerError(
+            `Method 'replace' not found on list ${objectName}`,
+            line,
+            column
+          )
+        } catch (error) {
+          if (error instanceof CompilerError) {
+            throw error
+          }
+          throw new CompilerError((error as Error).message, line, column)
+        }
+      }
+      case '+=':
+      case '-=':
+      case '*=':
+      case '/=':
+      case '%=':
+      case '..=': {
+        // Use list.replace(list.get(index) op value)
+        const operatorMap: Record<string, string> = {
+          '*': 'operator_multiply',
+          '/': 'operator_divide',
+          '%': 'operator_mod',
+          '.': 'operator_join'
+        }
+        const op = operator[0] // Get the operator character
+        const index = this.parseExpr(memberExpr.property)
+        let currentValue: TypedValue
+        try {
+          currentValue = this.parseComputedAccess(
+            objectName,
+            index,
+            line,
+            column
+          )
+        } catch (error) {
+          throw new CompilerError((error as Error).message, line, column)
+        }
+        const additionBlock = {
+          opcode: operatorMap[op],
+          fields: {},
+          inputs: {
+            NUM1: { type: 'any', value: currentValue.value },
+            NUM2: { type: 'any', value: value.value }
+          }
+        } satisfies Reporter
+        try {
+          const methodResult = this.globalScope.stmtMethod(
+            objectName,
+            'replace',
+            [index.value, additionBlock]
+          )
+          if (methodResult) {
+            return methodResult
+          }
+          throw new CompilerError(
+            `Method 'replace' not found on list ${objectName}`,
+            line,
+            column
+          )
+        } catch (error) {
+          if (error instanceof CompilerError) {
+            throw error
+          }
+          throw new CompilerError((error as Error).message, line, column)
+        }
+      }
+      default:
+        throw new CompilerError(
+          `Unsupported operator: ${operator}`,
+          line,
+          column
+        )
+    }
+  }
+
+  private parseIncrementStatement(stmt: IncrementStatement): Block[] {
+    if (stmt.target.type === 'Identifier') {
       // Simple variable assignment
-      const varName = (stmt.left as IdentifierExpression).name
-      const rightValue = this.parseExpr(stmt.right)
+      const varName = (stmt.target as IdentifierExpression).name
 
       switch (stmt.operator) {
-        case '=':
-          try {
-            return this.globalScope.set(varName, rightValue.value)
-          } catch (error) {
-            throw new CompilerError(
-              (error as Error).message,
-              stmt.line,
-              stmt.column
-            )
-          }
-        case '+=':
-          try {
-            return this.globalScope.add(varName, rightValue.value)
-          } catch (error) {
-            throw new CompilerError(
-              (error as Error).message,
-              stmt.line,
-              stmt.column
-            )
-          }
-        case '-=':
-          try {
-            return this.globalScope.add(varName, {
-              opcode: 'operator_subtract',
-              fields: {},
-              inputs: {
-                NUM1: { type: 'any', value: '0' },
-                NUM2: { type: 'any', value: rightValue.value }
-              }
-            })
-          } catch (error) {
-            throw new CompilerError(
-              (error as Error).message,
-              stmt.line,
-              stmt.column
-            )
-          }
-        // *= -> = var * value, /= -> = var / value, etc.
-        case '*=':
-        case '/=':
-        case '%=': {
-          const operatorMap: Record<string, string> = {
-            '*': 'operator_multiply',
-            '/': 'operator_divide',
-            '%': 'operator_mod'
-          }
-          const operator = stmt.operator[0] // Get the operator character
-          let varValue: Reporter
-          try {
-            const value = this.globalScope.get(varName)
-            if (!value) {
-              throw new CompilerError(
-                `Variable ${varName} not found for operation`,
-                stmt.line,
-                stmt.column
-              )
-            }
-            varValue = value
-          } catch (error) {
-            throw new CompilerError(
-              (error as Error).message,
-              stmt.line,
-              stmt.column
-            )
-          }
-          const operationBlock = {
-            opcode: operatorMap[operator],
-            fields: {},
-            inputs: {
-              NUM1: { type: 'any', value: varValue },
-              NUM2: { type: 'any', value: rightValue.value }
-            }
-          } satisfies Reporter
-          try {
-            return this.globalScope.set(varName, operationBlock)
-          } catch (error) {
-            throw new CompilerError(
-              (error as Error).message,
-              stmt.line,
-              stmt.column
-            )
-          }
-        }
+        case '++':
+          return this.operateVar(
+            varName,
+            '+=',
+            { type: 'any', value: '1' },
+            stmt.line,
+            stmt.column
+          )
+        case '--':
+          return this.operateVar(
+            varName,
+            '-=',
+            { type: 'any', value: '1' },
+            stmt.line,
+            stmt.column
+          )
         default:
           throw new CompilerError(
-            `Unsupported assignment operator: ${stmt.operator}`,
+            `Unsupported increment operator: ${stmt.operator}`,
             stmt.line,
             stmt.column
           )
       }
+    } else if (stmt.target.type === 'MemberExpression') {
+      // Computed member assignment like test[1]++
+      const memberExpr = stmt.target as MemberExpression
+
+      switch (stmt.operator) {
+        case '++':
+          return this.operateComputed(
+            memberExpr,
+            '+=',
+            { type: 'any', value: '1' },
+            stmt.line,
+            stmt.column
+          )
+        case '--':
+          return this.operateComputed(
+            memberExpr,
+            '-=',
+            { type: 'any', value: '1' },
+            stmt.line,
+            stmt.column
+          )
+        default:
+          throw new CompilerError(
+            `Unsupported increment operator: ${stmt.operator}`,
+            stmt.line,
+            stmt.column
+          )
+      }
+    } else {
+      throw new CompilerError(
+        'Unsupported increment target',
+        stmt.line,
+        stmt.column
+      )
+    }
+  }
+  private parseAssignmentStatement(stmt: AssignmentStatement): Block[] {
+    const value = this.parseExpr(stmt.right)
+
+    if (stmt.left.type === 'Identifier') {
+      // Simple variable assignment
+      const varName = (stmt.left as IdentifierExpression).name
+      return this.operateVar(
+        varName,
+        stmt.operator,
+        value,
+        stmt.line,
+        stmt.column
+      )
     } else if (stmt.left.type === 'MemberExpression') {
-      // Computed member assignment like test[1] = 2
+      // Computed member assignment like test[1] = value
       const memberExpr = stmt.left as MemberExpression
-
-      if (!memberExpr.computed) {
-        throw new CompilerError(
-          'Dot notation assignments are not supported',
-          stmt.line,
-          stmt.column
-        )
-      }
-
-      if (memberExpr.object.type !== 'Identifier') {
-        throw new CompilerError(
-          'Only simple computed assignments are supported',
-          stmt.line,
-          stmt.column
-        )
-      }
-
-      const objectName = (memberExpr.object as IdentifierExpression).name
-      const varType = this.globalScope.typeof(objectName)
-
-      if (varType !== 'list') {
-        throw new CompilerError(
-          'Computed assignment is only supported for lists',
-          stmt.line,
-          stmt.column
-        )
-      }
-
-      if (stmt.operator !== '=') {
-        throw new CompilerError(
-          'Only simple assignment (=) is supported for computed access',
-          stmt.line,
-          stmt.column
-        )
-      }
-
-      const index = this.parseExpr(memberExpr.property)
-      const value = this.parseExpr(stmt.right)
-
-      // Use list.replace(index, value)
-      try {
-        const methodResult = this.globalScope.stmtMethod(
-          objectName,
-          'replace',
-          [index.value, value.value]
-        )
-        if (methodResult) {
-          return methodResult
-        }
-        throw new CompilerError(
-          `Method 'replace' not found on list ${objectName}`,
-          stmt.line,
-          stmt.column
-        )
-      } catch (error) {
-        if (error instanceof CompilerError) {
-          throw error
-        }
-        throw new CompilerError(
-          (error as Error).message,
-          stmt.line,
-          stmt.column
-        )
-      }
+      return this.operateComputed(
+        memberExpr,
+        stmt.operator,
+        value,
+        stmt.line,
+        stmt.column
+      )
     } else {
       throw new CompilerError(
         'Unsupported assignment target',
