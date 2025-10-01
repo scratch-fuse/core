@@ -68,6 +68,9 @@ export interface ArrayExpression extends Expression {
 // Statements
 export interface Statement extends ASTNode {}
 
+export interface NoopStatement extends Statement {
+  type: 'NoopStatement'
+}
 export interface ExpressionStatement extends Statement {
   type: 'ExpressionStatement'
   expression: Expression
@@ -90,25 +93,25 @@ export interface AssignmentStatement extends Statement {
 export interface IfStatement extends Statement {
   type: 'IfStatement'
   condition: Expression
-  then: BlockStatement
-  else?: BlockStatement
+  then: Statement
+  else?: Statement
 }
 
 export interface WhileStatement extends Statement {
   type: 'WhileStatement'
   condition: Expression
-  body: BlockStatement
+  body: Statement
 }
 
 export interface UntilStatement extends Statement {
   type: 'UntilStatement'
   condition: Expression
-  body: BlockStatement
+  body: Statement
 }
 
 export interface LoopStatement extends Statement {
   type: 'LoopStatement'
-  body: BlockStatement
+  body: Statement
 }
 
 export interface ReturnStatement extends Statement {
@@ -826,11 +829,11 @@ export class Parser {
     const condition = this.parseExpression()
     this.consumePunctuation(')', "Expected ')' after if condition")
 
-    const then = this.parseBlockStatement()
-    let elseClause: BlockStatement | undefined
+    const then = this.parseStatementOrBlock()
+    let elseClause: Statement | undefined
 
     if (this.matchKeyword('else')) {
-      elseClause = this.parseBlockStatement()
+      elseClause = this.parseStatementOrBlock()
     }
 
     return {
@@ -847,7 +850,7 @@ export class Parser {
     this.consumePunctuation('(', "Expected '(' after 'while'")
     const condition = this.parseExpression()
     this.consumePunctuation(')', "Expected ')' after while condition")
-    const body = this.parseBlockStatement()
+    const body = this.parseStatementOrBlock()
 
     return {
       type: 'WhileStatement',
@@ -862,7 +865,7 @@ export class Parser {
     this.consumePunctuation('(', "Expected '(' after 'until'")
     const condition = this.parseExpression()
     this.consumePunctuation(')', "Expected ')' after until condition")
-    const body = this.parseBlockStatement()
+    const body = this.parseStatementOrBlock()
 
     return {
       type: 'UntilStatement',
@@ -874,7 +877,7 @@ export class Parser {
   }
 
   private parseLoopStatement(): LoopStatement {
-    const body = this.parseBlockStatement()
+    const body = this.parseStatementOrBlock()
     return {
       type: 'LoopStatement',
       body,
@@ -944,6 +947,24 @@ export class Parser {
     if (!this.isEof()) {
       this.match(TokenType.Eol)
     }
+  }
+
+  private parseStatementOrBlock(): Statement {
+    // If we see a '{', parse as block statement
+    if (this.check(TokenType.Punctuation) && this.peek().value === '{') {
+      return this.parseBlockStatement()
+    }
+    // If we see a ';', parse as noop statement
+    if (this.check(TokenType.Punctuation) && this.peek().value === ';') {
+      const token = this.advance()
+      return {
+        type: 'NoopStatement',
+        line: token.line,
+        column: token.column
+      } as NoopStatement
+    }
+    // Otherwise, parse as single statement
+    return this.parseStatement()
   }
 
   // Function declaration parsing

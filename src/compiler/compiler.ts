@@ -1654,6 +1654,8 @@ export class Compiler {
     functionReturnType: 'bool' | 'any' | 'void' | null
   ): Block[] {
     switch (stmt.type) {
+      case 'NoopStatement':
+        return []
       case 'ExpressionStatement':
         return this.parseExpressionStatement(
           stmt as ExpressionStatement,
@@ -2073,9 +2075,20 @@ export class Compiler {
       stmt.column
     )
 
-    const thenBlocks = this.parseBlockStatement(stmt.then, functionReturnType)
+    const thenBlocks: Block[] =
+      stmt.then.type === 'BlockStatement'
+        ? this.parseBlockStatement(
+            stmt.then as BlockStatement,
+            functionReturnType
+          )
+        : this.parseStatement(stmt.then, functionReturnType)
     const elseBlocks = stmt.else
-      ? this.parseBlockStatement(stmt.else, functionReturnType)
+      ? stmt.else.type === 'BlockStatement'
+        ? this.parseBlockStatement(
+            stmt.else as BlockStatement,
+            functionReturnType
+          )
+        : this.parseStatement(stmt.else as Statement, functionReturnType)
       : []
 
     return [
@@ -2105,7 +2118,13 @@ export class Compiler {
       stmt.column
     )
 
-    const bodyBlocks = this.parseBlockStatement(stmt.body, functionReturnType)
+    const bodyBlocks =
+      stmt.body.type === 'BlockStatement'
+        ? this.parseBlockStatement(
+            stmt.body as BlockStatement,
+            functionReturnType
+          )
+        : this.parseStatement(stmt.body, functionReturnType)
 
     return [
       {
@@ -2131,7 +2150,13 @@ export class Compiler {
       stmt.column
     )
 
-    const bodyBlocks = this.parseBlockStatement(stmt.body, functionReturnType)
+    const bodyBlocks =
+      stmt.body.type === 'BlockStatement'
+        ? this.parseBlockStatement(
+            stmt.body as BlockStatement,
+            functionReturnType
+          )
+        : this.parseStatement(stmt.body, functionReturnType)
 
     return [
       {
@@ -2149,7 +2174,13 @@ export class Compiler {
     stmt: LoopStatement,
     functionReturnType: 'bool' | 'any' | 'void' | null
   ): Block[] {
-    const bodyBlocks = this.parseBlockStatement(stmt.body, functionReturnType)
+    const bodyBlocks =
+      stmt.body.type === 'BlockStatement'
+        ? this.parseBlockStatement(
+            stmt.body as BlockStatement,
+            functionReturnType
+          )
+        : this.parseStatement(stmt.body, functionReturnType)
 
     return [
       {
