@@ -23,7 +23,7 @@ fn sort() once -> void {
   // Sort the array using bubble sort
   n = array.length
   for (i = 1; i <= n; i++) {
-    for (j = 1; j <= n - i; j++) {
+    for (j = 1; j <= n - i + 1; j++) {
       if (array[j - 1] > array[j]) {
         // Swap array[j-1] and array[j]
         temp = array[j - 1]
