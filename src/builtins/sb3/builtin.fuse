@@ -633,6 +633,20 @@ namespace event = {
   }
 }
 namespace control = {
+  until = {
+    "opcode": "control_repeat_until",
+    "type": "command",
+    "args": [
+      {
+        "name": "CONDITION",
+        "type": "bool"
+      },
+      {
+        "name": "SUBSTACK",
+        "type": "substack"
+      }
+    ]
+  }
   repeat = {
     "opcode": "control_repeat",
     "type": "command",

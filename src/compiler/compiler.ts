@@ -23,7 +23,6 @@ import {
   AssignmentStatement,
   IfStatement,
   WhileStatement,
-  UntilStatement,
   LoopStatement,
   ReturnStatement,
   VariableDeclaration,
@@ -1653,11 +1652,6 @@ export class Compiler {
         )
       case 'ForStatement':
         return this.parseForStatement(stmt as ForStatement, functionReturnType)
-      case 'UntilStatement':
-        return this.parseUntilStatement(
-          stmt as UntilStatement,
-          functionReturnType
-        )
       case 'LoopStatement':
         return this.parseLoopStatement(
           stmt as LoopStatement,
@@ -2305,38 +2299,6 @@ export class Compiler {
             type: 'substack',
             value: [...bodyBlocks, ...increment]
           }
-        }
-      }
-    ]
-  }
-
-  private parseUntilStatement(
-    stmt: UntilStatement,
-    functionReturnType: 'bool' | 'any' | 'void' | null
-  ): Block[] {
-    const condition = this.parseExpr(stmt.condition)
-    this.ensureBooleanType(
-      condition,
-      'Until condition must be boolean',
-      stmt.line,
-      stmt.column
-    )
-
-    const bodyBlocks =
-      stmt.body.type === 'BlockStatement'
-        ? this.parseBlockStatement(
-            stmt.body as BlockStatement,
-            functionReturnType
-          )
-        : this.parseStatement(stmt.body, functionReturnType)
-
-    return [
-      {
-        opcode: 'control_repeat_until',
-        fields: {},
-        inputs: {
-          CONDITION: { type: 'bool', value: condition.value as Reporter },
-          SUBSTACK: { type: 'substack', value: bodyBlocks }
         }
       }
     ]

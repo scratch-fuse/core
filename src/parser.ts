@@ -118,12 +118,6 @@ export interface ForStatement extends Statement {
   body: Statement
 }
 
-export interface UntilStatement extends Statement {
-  type: 'UntilStatement'
-  condition: Expression
-  body: Statement
-}
-
 export interface LoopStatement extends Statement {
   type: 'LoopStatement'
   body: Statement
@@ -695,8 +689,6 @@ export class Parser {
             return this.parseWhileStatement()
           case 'for':
             return this.parseForStatement()
-          case 'until':
-            return this.parseUntilStatement()
           case 'loop':
             return this.parseLoopStatement()
           case 'return':
@@ -957,21 +949,6 @@ export class Parser {
       line: start.line,
       column: start.column
     } as ForStatement
-  }
-
-  private parseUntilStatement(): UntilStatement {
-    this.consumePunctuation('(', "Expected '(' after 'until'")
-    const condition = this.parseExpression()
-    this.consumePunctuation(')', "Expected ')' after until condition")
-    const body = this.parseStatementOrBlock()
-
-    return {
-      type: 'UntilStatement',
-      condition,
-      body,
-      line: condition.line,
-      column: condition.column
-    } as UntilStatement
   }
 
   private parseLoopStatement(): LoopStatement {
@@ -1350,4 +1327,237 @@ export class Parser {
   public parseExpressionOnly(): Expression {
     return this.parseExpression()
   }
+}
+
+export function toSource(node: ASTNode, indent = 2, semi = false): string {
+  const nl = indent > 0 ? '\n' : ''
+  const sp = indent > 0 ? ' ' : ''
+  const ksp = ' ' // keyword space - always needed even when indent = 0
+  const indentStr = indent > 0 ? ' '.repeat(indent) : ''
+  const useSemi = indent === 0 || semi // always use semicolons when minified or when semi is true
+  
+  function indentLines(str: string, level: number): string {
+    if (indent === 0) return str
+    const prefix = indentStr.repeat(level)
+    return str.split('\n').map(line => line ? prefix + line : '').join('\n')
+  }
+
+  function formatBlock(statements: Statement[], level: number): string {
+    if (statements.length === 0) return ''
+    return statements.map(stmt => indentLines(toSourceImpl(stmt, level), level)).join(nl)
+  }
+
+  function toSourceImpl(node: ASTNode, level: number = 0): string {
+    switch (node.type) {
+      // Expressions
+      case 'Literal': {
+        const lit = node as LiteralExpression
+        if (typeof lit.value === 'string') {
+          return `"${lit.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+        }
+        return String(lit.value)
+      }
+
+      case 'Identifier': {
+        const id = node as IdentifierExpression
+        return id.name
+      }
+
+      case 'BinaryExpression': {
+        const bin = node as BinaryExpression
+        const left = toSourceImpl(bin.left, level)
+        const right = toSourceImpl(bin.right, level)
+        return `${left}${sp}${bin.operator}${sp}${right}`
+      }
+
+      case 'UnaryExpression': {
+        const unary = node as UnaryExpression
+        const operand = toSourceImpl(unary.operand, level)
+        return `${unary.operator}${operand}`
+      }
+
+      case 'CallExpression': {
+        const call = node as CallExpression
+        const callee = toSourceImpl(call.callee, level)
+        const args = call.arguments.map(arg => toSourceImpl(arg, level)).join(`,${sp}`)
+        let result = `${callee}(${args})`
+        if (call.then) {
+          result += `${sp}${toSourceImpl(call.then, level)}`
+        }
+        return result
+      }
+
+      case 'MemberExpression': {
+        const member = node as MemberExpression
+        const object = toSourceImpl(member.object, level)
+        if (member.computed) {
+          const property = toSourceImpl(member.property, level)
+          return `${object}[${property}]`
+        } else {
+          const property = toSourceImpl(member.property, level)
+          return `${object}.${property}`
+        }
+      }
+
+      case 'ArrayExpression': {
+        const arr = node as ArrayExpression
+        const elements = arr.elements.map(el => toSourceImpl(el, level)).join(`,${sp}`)
+        return `[${elements}]`
+      }
+
+      // Statements
+      case 'NoopStatement': {
+        return useSemi ? ';' : ''
+      }
+
+      case 'ExpressionStatement': {
+        const exprStmt = node as ExpressionStatement
+        const expr = toSourceImpl(exprStmt.expression, level)
+        return useSemi ? expr + ';' : expr
+      }
+
+      case 'VariableDeclaration': {
+        const varDecl = node as VariableDeclaration
+        const keyword = varDecl.isGlobal ? 'global' : 'let'
+        const init = toSourceImpl(varDecl.initializer, level)
+        const stmt = `${keyword}${ksp}${varDecl.name}${sp}=${sp}${init}`
+        return useSemi ? stmt + ';' : stmt
+      }
+
+      case 'AssignmentStatement': {
+        const assign = node as AssignmentStatement
+        const left = toSourceImpl(assign.left, level)
+        const right = toSourceImpl(assign.right, level)
+        const stmt = `${left}${sp}${assign.operator}${sp}${right}`
+        return useSemi ? stmt + ';' : stmt
+      }
+
+      case 'IncrementStatement': {
+        const inc = node as IncrementStatement
+        const target = toSourceImpl(inc.target, level)
+        const stmt = `${inc.operator}${target}`
+        return useSemi ? stmt + ';' : stmt
+      }
+
+      case 'IfStatement': {
+        const ifStmt = node as IfStatement
+        const condition = toSourceImpl(ifStmt.condition, level)
+        const thenPart = toSourceImpl(ifStmt.then, level)
+        let result = `if${sp}(${condition})${sp}${thenPart}`
+        if (ifStmt.else) {
+          const elsePart = toSourceImpl(ifStmt.else, level)
+          result += `${sp}else${sp}${elsePart}`
+        }
+        return result
+      }
+
+      case 'WhileStatement': {
+        const whileStmt = node as WhileStatement
+        const condition = toSourceImpl(whileStmt.condition, level)
+        const body = toSourceImpl(whileStmt.body, level)
+        return `while${sp}(${condition})${sp}${body}`
+      }
+
+      case 'ForStatement': {
+        const forStmt = node as ForStatement
+        const init = forStmt.init ? toSourceImpl(forStmt.init, level).replace(/;$/, '') : ''
+        const condition = forStmt.condition ? toSourceImpl(forStmt.condition, level) : ''
+        const increment = forStmt.increment ? toSourceImpl(forStmt.increment, level).replace(/;$/, '') : ''
+        const body = toSourceImpl(forStmt.body, level)
+        return `for${sp}(${init};${sp}${condition};${sp}${increment})${sp}${body}`
+      }
+
+      case 'LoopStatement': {
+        const loopStmt = node as LoopStatement
+        const body = toSourceImpl(loopStmt.body, level)
+        return `loop${sp}${body}`
+      }
+
+      case 'ReturnStatement': {
+        const ret = node as ReturnStatement
+        let stmt: string
+        if (ret.value) {
+          const value = toSourceImpl(ret.value, level)
+          stmt = `return${ksp}${value}`
+        } else {
+          stmt = 'return'
+        }
+        return useSemi ? stmt + ';' : stmt
+      }
+
+      case 'BlockStatement': {
+        const block = node as BlockStatement
+        if (block.body.length === 0) {
+          return `{}`
+        }
+        const body = formatBlock(block.body, level + 1)
+        return `{${nl}${body}${nl}${indentLines('}', level)}`
+      }
+
+      case 'DecoratorStatement': {
+        const decorator = node as DecoratorStatement
+        const name = toSourceImpl(decorator.name, level)
+        const args = decorator.arguments.map(arg => toSourceImpl(arg, level)).join(`,${sp}`)
+        const target = toSourceImpl(decorator.target, level)
+        if (decorator.arguments.length > 0) {
+          return `@${name}(${args})${sp}${target}`
+        }
+        return `@${name}${ksp}${target}`
+      }
+
+      case 'FunctionDeclaration': {
+        const fn = node as FunctionDeclaration
+        const name = toSourceImpl(fn.name, level)
+        const params = fn.parameters.map(p => 
+          `${toSourceImpl(p.name, level)}:${sp}${toSourceImpl(p.type, level)}`
+        ).join(`,${sp}`)
+        const returnType = toSourceImpl(fn.returnType, level)
+        const once = fn.once ? `${sp}once` : ''
+        const body = toSourceImpl(fn.body, level)
+        return `fn${ksp}${name}(${params})${once}${sp}->${sp}${returnType}${sp}${body}`
+      }
+
+      case 'NamespaceDeclaration': {
+        const ns = node as NamespaceDeclaration
+        const props = ns.body.properties.map(prop => {
+          const value = formatNamespaceValue(prop.value, level + 1)
+          return indentLines(`${prop.key}${sp}=${sp}${value}`, level + 1)
+        }).join(nl)
+        return `namespace${ksp}${ns.name}${sp}=${sp}{${nl}${props}${nl}}`
+      }
+
+      case 'Program': {
+        const program = node as Program
+        return formatBlock(program.body, 0)
+      }
+
+      default:
+        return `/* Unknown node type: ${node.type} */`
+    }
+  }
+
+  function formatNamespaceValue(value: any, level: number): string {
+    if (value === null) return 'null'
+    if (value === true) return 'true'
+    if (value === false) return 'false'
+    if (typeof value === 'number') return String(value)
+    if (typeof value === 'string') {
+      return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+    }
+    if (Array.isArray(value)) {
+      const elements = value.map(v => formatNamespaceValue(v, level)).join(`,${sp}`)
+      return `[${elements}]`
+    }
+    if (typeof value === 'object') {
+      const entries = Object.entries(value).map(([k, v]) => {
+        const formattedValue = formatNamespaceValue(v, level + 1)
+        return indentLines(`"${k}":${sp}${formattedValue}`, level + 1)
+      }).join(`,${nl}`)
+      if (entries.length === 0) return '{}'
+      return `{${nl}${entries}${nl}${indentLines('}', level)}`
+    }
+    return String(value)
+  }
+
+  return toSourceImpl(node, 0)
 }
