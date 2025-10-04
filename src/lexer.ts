@@ -1,4 +1,4 @@
-import { ErrorList } from './util/error'
+import { ErrorList } from '@scratch-fuse/utility'
 
 export enum TokenType {
   Number = 'Number',

@@ -14,9 +14,11 @@
   },
   "author": "FurryR",
   "license": "MPL-2.0",
+  "dependencies": {
+    "@scratch-fuse/utility": "github:scratch-fuse/utility#build"
+  },
   "devDependencies": {
     "@types/node": "^24.5.2",
-    "jszip": "^3.10.1",
     "prettier": "^3.6.2",
     "tsup": "^8.5.0",
     "typescript": "^5.9.2"

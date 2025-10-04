@@ -1,5 +1,5 @@
 import { Token, TokenType } from './lexer'
-import { ErrorList } from './util/error'
+import { ErrorList } from '@scratch-fuse/utility'
 
 // AST Node Types
 export interface ASTNode {
