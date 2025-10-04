@@ -8,6 +8,5 @@ export default tsup.defineConfig({
   clean: true,
   minify: false,
   target: 'esnext',
-  outDir: 'dist',
-  loader: { '.fuse': 'text' }
+  outDir: 'dist'
 })
