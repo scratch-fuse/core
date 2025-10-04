@@ -19,7 +19,7 @@ event.start {
 - **Supports variables, lists, and custom blocks**
 - **Event-driven programming** with Scratch hat blocks
 - **Type annotations** for better code clarity
-- **Decorators** for external block integration
+- **Decorators** for exporting blocks and variables
 - Can be used as **Intermediate Representation (IR)** for other languages, or as a component for Scratch Addons
 
 ## Examples
@@ -113,15 +113,14 @@ event.keyPressed("space") {
 }
 ```
 
-### Using External Blocks with Decorators
+### Export Blocks with Decorators
 
 ```fuse
-// Define external Scratch blocks using @extern decorator
-@extern("wait 1 frame") fn yield() once -> void {
-  // External block implementation
+// Export Scratch blocks using @export decorator
+@export("wait 1 frame") fn yield() once -> void {
 }
 
-@extern("current timestamp") fn currentTimestamp() once -> any {
+@export("current timestamp") fn currentTimestamp() once -> any {
   return sensing.daysSince2000() * 86400 * 1000
 }
 
@@ -140,13 +139,21 @@ event.start {
 ### FPS Counter Example
 
 ```fuse
-@extern("last timestamp") let lastTimestamp = 0
+@export("// [value]") fn description(value: any) once -> void {
+  // This function is a no-op, used for adding comments in the generated Scratch blocks
+}
+@export("drop [value]") fn drop(value: any) once -> void {
+  description(value)
+}
+@export("last timestamp") let lastTimestamp = 0
 
-@extern("current timestamp") fn currentTimestamp() once -> any {
+@export("current timestamp") fn currentTimestamp() once -> any {
   return sensing.daysSince2000() * 86400 * 1000
 }
 
-@extern("wait 1 frame") fn yield() once -> void {}
+@export("wait 1 frame") fn yield() once -> void {
+  drop(translate.getTranslate(1, ""))
+}
 
 fn calculateFps() once -> any {
   lastTimestamp = currentTimestamp()

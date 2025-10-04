@@ -1584,7 +1584,7 @@ export class Compiler {
           case 'DecoratorStatement': {
             // Perform simple check
             const decorator = stmt as DecoratorStatement
-            if (decorator.name.name !== 'extern') {
+            if (decorator.name.name !== 'export') {
               throw new CompilerError(
                 `Unknown decorator @${decorator.name.name}`,
                 decorator.line,
@@ -2622,14 +2622,14 @@ export class Compiler {
         let exportName: string | null = null
         if (decl.type === 'DecoratorStatement') {
           const decorator = decl as DecoratorStatement
-          if (decorator.name.name !== 'extern') {
+          if (decorator.name.name !== 'export') {
             throw new CompilerError(
               `Unknown decorator @${decorator.name.name}`,
               decorator.line,
               decorator.column
             )
           }
-          // @export("external name") fn ...
+          // @export("exportal name") fn ...
           if (decorator.target.type !== 'FunctionDeclaration') {
             continue
           }
@@ -2696,14 +2696,14 @@ export function getProgramInfo(program: Program): ProgramInfo {
       let exportName: string | null = null
       if (decl.type === 'DecoratorStatement') {
         const decorator = decl as DecoratorStatement
-        if (decorator.name.name !== 'extern') {
+        if (decorator.name.name !== 'export') {
           throw new CompilerError(
             `Unknown decorator @${decorator.name.name}`,
             decorator.line,
             decorator.column
           )
         }
-        // @export("external name") global id = 1
+        // @export("exportal name") global id = 1
         if (decorator.target.type !== 'VariableDeclaration') {
           continue
         }

@@ -155,7 +155,7 @@ Target = FunctionDeclaration | VariableDeclaration ;
 ArgumentList = Literal ("," Literal)* ;
 ```
 
-**Note**: Currently, only the `@extern` decorator is supported.
+**Note**: Currently, only the `@export` decorator is supported.
 
 ### Hat Blocks (Event Handlers)
 
@@ -323,20 +323,20 @@ The FUSE program structure allows only the following at the top level:
 FUSE uses a simple type system:
 - `void`: No return value
 - `any`: Any Scratch value (string, number, boolean)
-- Custom types can be defined through identifiers
+- `bool`: Boolean values (`true` or `false`)
 
 ### Decorators
 
-#### `@extern` Decorator
+#### `@export` Decorator
 
-The `@extern` decorator is used to define external Scratch blocks or mark code that should use specific Scratch block implementations.
+The `@export` decorator is used to export Scratch blocks.
 
 ```fuse
-@extern("block description") fn functionName(params) once -> returnType {
-  // implementation
+@export("test [params]") fn functionName(params: any) once -> returnType {
+  // The function will appear as a Scratch block with the given name and parameters
 }
 
-@extern("variable description") let variableName = initialValue ;
+@export("variable description") let variableName = initialValue ;
 ```
 
 ### Operators
@@ -502,10 +502,10 @@ fn processArray() once -> void {
 }
 ```
 
-### External Blocks
+### exportal Blocks
 
 ```fuse
-@extern("custom block [arg1] and [arg2]") 
+@export("custom block [arg1] and [arg2]") 
 fn customBlock(arg1: any, arg2: any) once -> any {
   return arg1 + arg2
 }
