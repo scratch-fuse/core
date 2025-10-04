@@ -1335,16 +1335,27 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
   const ksp = ' ' // keyword space - always needed even when indent = 0
   const indentStr = indent > 0 ? ' '.repeat(indent) : ''
   const useSemi = indent === 0 || semi // always use semicolons when minified or when semi is true
-  
+
   function indentLines(str: string, level: number): string {
     if (indent === 0) return str
     const prefix = indentStr.repeat(level)
-    return str.split('\n').map(line => line ? prefix + line : '').join('\n')
+    return str
+      .split('\n')
+      .map(line => (line ? prefix + line : ''))
+      .join('\n')
   }
 
   function formatBlock(statements: Statement[], level: number): string {
     if (statements.length === 0) return ''
-    return statements.map(stmt => indentLines(toSourceImpl(stmt, level), level)).join(nl)
+    return statements
+      .map(stmt => {
+        const source = toSourceImpl(stmt, level)
+        // Only add indentation if the statement doesn't start with whitespace
+        // (which would indicate it's already been indented by a nested block)
+        if (indent === 0) return source
+        return indentStr.repeat(level) + source
+      })
+      .join(nl)
   }
 
   function toSourceImpl(node: ASTNode, level: number = 0): string {
@@ -1379,7 +1390,9 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
       case 'CallExpression': {
         const call = node as CallExpression
         const callee = toSourceImpl(call.callee, level)
-        const args = call.arguments.map(arg => toSourceImpl(arg, level)).join(`,${sp}`)
+        const args = call.arguments
+          .map(arg => toSourceImpl(arg, level))
+          .join(`,${sp}`)
         let result = `${callee}(${args})`
         if (call.then) {
           result += `${sp}${toSourceImpl(call.then, level)}`
@@ -1401,7 +1414,9 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
 
       case 'ArrayExpression': {
         const arr = node as ArrayExpression
-        const elements = arr.elements.map(el => toSourceImpl(el, level)).join(`,${sp}`)
+        const elements = arr.elements
+          .map(el => toSourceImpl(el, level))
+          .join(`,${sp}`)
         return `[${elements}]`
       }
 
@@ -1460,9 +1475,15 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
 
       case 'ForStatement': {
         const forStmt = node as ForStatement
-        const init = forStmt.init ? toSourceImpl(forStmt.init, level).replace(/;$/, '') : ''
-        const condition = forStmt.condition ? toSourceImpl(forStmt.condition, level) : ''
-        const increment = forStmt.increment ? toSourceImpl(forStmt.increment, level).replace(/;$/, '') : ''
+        const init = forStmt.init
+          ? toSourceImpl(forStmt.init, level).replace(/;$/, '')
+          : ''
+        const condition = forStmt.condition
+          ? toSourceImpl(forStmt.condition, level)
+          : ''
+        const increment = forStmt.increment
+          ? toSourceImpl(forStmt.increment, level).replace(/;$/, '')
+          : ''
         const body = toSourceImpl(forStmt.body, level)
         return `for${sp}(${init};${sp}${condition};${sp}${increment})${sp}${body}`
       }
@@ -1497,7 +1518,9 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
       case 'DecoratorStatement': {
         const decorator = node as DecoratorStatement
         const name = toSourceImpl(decorator.name, level)
-        const args = decorator.arguments.map(arg => toSourceImpl(arg, level)).join(`,${sp}`)
+        const args = decorator.arguments
+          .map(arg => toSourceImpl(arg, level))
+          .join(`,${sp}`)
         const target = toSourceImpl(decorator.target, level)
         if (decorator.arguments.length > 0) {
           return `@${name}(${args})${sp}${target}`
@@ -1508,9 +1531,12 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
       case 'FunctionDeclaration': {
         const fn = node as FunctionDeclaration
         const name = toSourceImpl(fn.name, level)
-        const params = fn.parameters.map(p => 
-          `${toSourceImpl(p.name, level)}:${sp}${toSourceImpl(p.type, level)}`
-        ).join(`,${sp}`)
+        const params = fn.parameters
+          .map(
+            p =>
+              `${toSourceImpl(p.name, level)}:${sp}${toSourceImpl(p.type, level)}`
+          )
+          .join(`,${sp}`)
         const returnType = toSourceImpl(fn.returnType, level)
         const once = fn.once ? `${sp}once` : ''
         const body = toSourceImpl(fn.body, level)
@@ -1519,10 +1545,12 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
 
       case 'NamespaceDeclaration': {
         const ns = node as NamespaceDeclaration
-        const props = ns.body.properties.map(prop => {
-          const value = formatNamespaceValue(prop.value, level + 1)
-          return indentLines(`${prop.key}${sp}=${sp}${value}`, level + 1)
-        }).join(nl)
+        const props = ns.body.properties
+          .map(prop => {
+            const value = formatNamespaceValue(prop.value, level + 1)
+            return indentLines(`${prop.key}${sp}=${sp}${value}`, level + 1)
+          })
+          .join(nl)
         return `namespace${ksp}${ns.name}${sp}=${sp}{${nl}${props}${nl}}`
       }
 
@@ -1545,14 +1573,18 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
       return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
     }
     if (Array.isArray(value)) {
-      const elements = value.map(v => formatNamespaceValue(v, level)).join(`,${sp}`)
+      const elements = value
+        .map(v => formatNamespaceValue(v, level))
+        .join(`,${sp}`)
       return `[${elements}]`
     }
     if (typeof value === 'object') {
-      const entries = Object.entries(value).map(([k, v]) => {
-        const formattedValue = formatNamespaceValue(v, level + 1)
-        return indentLines(`"${k}":${sp}${formattedValue}`, level + 1)
-      }).join(`,${nl}`)
+      const entries = Object.entries(value)
+        .map(([k, v]) => {
+          const formattedValue = formatNamespaceValue(v, level + 1)
+          return indentLines(`"${k}":${sp}${formattedValue}`, level + 1)
+        })
+        .join(`,${nl}`)
       if (entries.length === 0) return '{}'
       return `{${nl}${entries}${nl}${indentLines('}', level)}`
     }
