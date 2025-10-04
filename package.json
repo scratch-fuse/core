@@ -1,7 +1,7 @@
 {
   "name": "@scratch-fuse/core",
   "version": "1.0.0",
-  "description": "Codename fuse -- to serialize Scratch blocks to scripts.",
+  "description": "The core of fuse language",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -21,13 +21,13 @@
     "tsup": "^8.5.0",
     "typescript": "^5.9.2"
   },
-  "homepage": "https://github.com/FurryR/scratch-fuse#readme",
+  "homepage": "https://github.com/scratch-fuse/core#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FurryR/scratch-fuse.git"
+    "url": "git+https://github.com/scratch-fuse/core.git"
   },
   "bugs": {
-    "url": "https://github.com/FurryR/scratch-fuse/issues"
+    "url": "https://github.com/scratch-fuse/core/issues"
   },
   "keywords": [
     "scratch",
