@@ -1,5 +1,5 @@
 {
-  "name": "scratch-fuse",
+  "name": "@scratch-fuse/core",
   "version": "1.0.0",
   "description": "Codename fuse -- to serialize Scratch blocks to scripts.",
   "main": "dist/index.cjs",
@@ -16,8 +16,6 @@
   "license": "MPL-2.0",
   "devDependencies": {
     "@types/node": "^24.5.2",
-    "json5": "^2.2.3",
-    "jsonschema": "^1.5.0",
     "jszip": "^3.10.1",
     "prettier": "^3.6.2",
     "tsup": "^8.5.0",
@@ -41,6 +39,7 @@
   ],
   "files": [
     "dist",
+    "bin",
     "LICENSE",
     "README.md"
   ]

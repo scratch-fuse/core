@@ -1,0 +1,88 @@
+name: CI/CD Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build project
+        run: npm run build
+      
+      - name: Prepare build branch
+        run: |
+          # 配置 git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 创建临时目录
+          mkdir -p /tmp/build-output
+          
+          # 复制必要的文件到临时目录
+          cp -r dist /tmp/build-output/
+          cp package.json /tmp/build-output/
+          cp README.md /tmp/build-output/
+          cp LICENSE /tmp/build-output/
+          
+          # 修改 package.json 以移除 devDependencies 和构建脚本
+          cd /tmp/build-output
+          cat package.json | node -e "
+            const pkg = JSON.parse(require('fs').readFileSync('/dev/stdin', 'utf8'));
+            delete pkg.devDependencies;
+            delete pkg.scripts;
+            pkg.scripts = {};
+            console.log(JSON.stringify(pkg, null, 2));
+          " > package.json.tmp
+          mv package.json.tmp package.json
+          
+          # 切换到 build 分支（孤儿分支）
+          cd $GITHUB_WORKSPACE
+          git checkout --orphan build
+          
+          # 删除所有文件
+          git rm -rf .
+          
+          # 复制构建产物
+          cp -r /tmp/build-output/* .
+          
+          # 创建 .gitignore
+          echo "node_modules/" > .gitignore
+          
+          # 提交更改
+          git add -A
+          git commit -m "Build output from ${{ github.sha }}" || echo "No changes to commit"
+          
+          # 强制推送到 build 分支
+          git push origin build --force
+      
+      - name: Display installation instructions
+        run: |
+          echo "✅ Build branch updated successfully!"
+          echo ""
+          echo "📦 To install this package, use:"
+          echo "npm install github:${{ github.repository }}#build"
+          echo ""
+          echo "Or add to package.json:"
+          echo "\"@scratch-fuse/core\": \"github:${{ github.repository }}#build\""

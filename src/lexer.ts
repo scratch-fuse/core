@@ -26,7 +26,6 @@ const keywords = new Set([
   'else',
   'while',
   'for',
-  'until',
   'loop',
   'return',
   'true',
