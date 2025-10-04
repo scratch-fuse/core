@@ -32,14 +32,12 @@
   "keywords": [
     "scratch",
     "blocks",
-    "compiler",
-    "serializer",
+    "parser",
     "script",
     "fuse"
   ],
   "files": [
     "dist",
-    "bin",
     "LICENSE",
     "README.md"
   ]
