@@ -77,8 +77,6 @@ jobs:
             "scratch-fuse/compiler"
             "scratch-fuse/serializer"
             "scratch-fuse/builtins"
-            "scratch-fuse/formatter",
-            "scratch-fuse/fuse-lang"
           )
           
           for repo in "${REPOS[@]}"; do
@@ -93,4 +91,3 @@ jobs:
               && echo "✓ Successfully triggered $repo" \
               || echo "✗ Failed to trigger $repo"
           done
-              
