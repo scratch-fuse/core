@@ -2,7 +2,7 @@
   "name": "@scratch-fuse/core",
   "version": "1.0.0",
   "description": "The core of fuse language",
-  "main": "dist/index.cjs",
+  "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "scripts": {
