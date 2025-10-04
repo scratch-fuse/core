@@ -1450,7 +1450,7 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
       case 'IncrementStatement': {
         const inc = node as IncrementStatement
         const target = toSourceImpl(inc.target, level)
-        const stmt = `${inc.operator}${target}`
+        const stmt = `${target}${inc.operator}`
         return useSemi ? stmt + ';' : stmt
       }
 
