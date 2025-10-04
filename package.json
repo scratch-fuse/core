@@ -4,7 +4,6 @@
   "description": "The core of fuse language",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
-  "packageManager": "npm",
   "types": "dist/index.d.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
