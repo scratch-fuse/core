@@ -78,7 +78,7 @@ jobs:
             "scratch-fuse/serializer"
             "scratch-fuse/builtins"
           )
-          
+
           for repo in "${REPOS[@]}"; do
             echo "Triggering workflow for $repo..."
             curl -L \

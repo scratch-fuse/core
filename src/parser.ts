@@ -487,6 +487,20 @@ export class Parser {
     if (this.matchOperator('!', '-', '+')) {
       const op = this.previous().value
       const operand = this.parseUnary()
+      if (operand.type === 'Literal' && (op === '+' || op === '-')) {
+        // Constant folding for unary + and -
+        if (typeof (operand as LiteralExpression).value === 'number') {
+          const foldedValue =
+            op === '-' ? -(operand as LiteralExpression).value : +(operand as LiteralExpression).value
+          return {
+            type: 'Literal',
+            value: foldedValue,
+            raw: foldedValue.toString(),
+            line: operand.line,
+            column: operand.column
+          } as LiteralExpression
+        }
+      }
       return {
         type: 'UnaryExpression',
         operator: op,
@@ -1393,7 +1407,7 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
         const args = call.arguments
           .map(arg => toSourceImpl(arg, level))
           .join(`,${sp}`)
-        let result = `${callee}(${args})`
+        let result = `${callee}${call.arguments.length === 0 && level === 0 ? `` : `(${args})`}`
         if (call.then) {
           result += `${sp}${toSourceImpl(call.then, level)}`
         }

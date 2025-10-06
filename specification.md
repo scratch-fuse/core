@@ -56,15 +56,15 @@ Letter = UnicodeLetterCategory ;
 ### Keywords
 
 ```ebnf
-Keyword = "fn" | "let" | "global" | "if" | "else" | "while" | "for" | "loop" 
+Keyword = "fn" | "let" | "global" | "if" | "else" | "while" | "for" | "loop"
         | "return" | "true" | "false" | "once" | "namespace" ;
 ```
 
 ### Operators
 
 ```ebnf
-Operator = ".." | "+" | "-" | "*" | "/" | "%" 
-         | "=" | "==" | "!=" | "<" | ">" | "<=" | ">=" 
+Operator = ".." | "+" | "-" | "*" | "/" | "%"
+         | "=" | "==" | "!=" | "<" | ">" | "<=" | ">="
          | "&&" | "||" | "!" | "."
          | "->" | "+=" | "-=" | "*=" | "/=" | "%=" | "..="
          | "++" | "--" ;
@@ -164,6 +164,7 @@ HatBlock = Expression BlockStatement ;
 ```
 
 Examples:
+
 ```fuse
 event.start { /* statements */ }
 event.keyPressed("space") { /* statements */ }
@@ -273,8 +274,8 @@ FactorExpression = UnaryExpression ( ("*" | "/" | "%") UnaryExpression )* ;
 
 UnaryExpression = ( ("+" | "-" | "!") UnaryExpression ) | CallExpression ;
 
-CallExpression = PrimaryExpression ( "(" ArgumentList? ")" [ BlockStatement ] 
-                                   | "[" Expression "]" 
+CallExpression = PrimaryExpression ( "(" ArgumentList? ")" [ BlockStatement ]
+                                   | "[" Expression "]"
                                    | "." Identifier )* ;
 
 PrimaryExpression = Literal
@@ -321,6 +322,7 @@ The FUSE program structure allows only the following at the top level:
 ### Type System
 
 FUSE uses a simple type system:
+
 - `void`: No return value
 - `any`: Any Scratch value (string, number, boolean)
 - `bool`: Boolean values (`true` or `false`)
@@ -342,6 +344,7 @@ The `@export` decorator is used to export Scratch blocks.
 ### Operators
 
 #### Arithmetic Operators
+
 - `+`: Addition
 - `-`: Subtraction
 - `*`: Multiplication
@@ -349,9 +352,11 @@ The `@export` decorator is used to export Scratch blocks.
 - `%`: Modulo
 
 #### String Operators
+
 - `..`: String concatenation
 
 #### Comparison Operators
+
 - `==`: Equal
 - `!=`: Not equal
 - `<`: Less than
@@ -360,21 +365,25 @@ The `@export` decorator is used to export Scratch blocks.
 - `>=`: Greater than or equal
 
 #### Logical Operators
+
 - `&&`: Logical AND
 - `||`: Logical OR
 - `!`: Logical NOT
 
 #### Assignment Operators
+
 - `=`: Assignment
 - `+=`, `-=`, `*=`, `/=`, `%=`, `..=`: Compound assignment
 
 #### Increment/Decrement
+
 - `++`: Increment by 1
 - `--`: Decrement by 1
 
 ### Control Flow
 
 #### If-Else
+
 ```fuse
 if (condition) {
   // statements
@@ -384,6 +393,7 @@ if (condition) {
 ```
 
 #### While Loop
+
 ```fuse
 while (condition) {
   // statements
@@ -391,6 +401,7 @@ while (condition) {
 ```
 
 #### For Loop
+
 ```fuse
 for (init; condition; update) {
   // statements
@@ -398,6 +409,7 @@ for (init; condition; update) {
 ```
 
 #### Infinite Loop
+
 ```fuse
 loop {
   // statements
@@ -407,11 +419,13 @@ loop {
 ### Function Calls
 
 Functions can be called with arguments:
+
 ```fuse
 functionName(arg1, arg2, arg3)
 ```
 
 Some Scratch blocks can have a "then" block:
+
 ```fuse
 someBlock(args) {
   // then statements
@@ -421,6 +435,7 @@ someBlock(args) {
 ### Member Access
 
 Access namespace members or object properties:
+
 ```fuse
 namespace.property
 object.method(args)
@@ -505,7 +520,7 @@ fn processArray() once -> void {
 ### exportal Blocks
 
 ```fuse
-@export("custom block [arg1] and [arg2]") 
+@export("custom block [arg1] and [arg2]")
 fn customBlock(arg1: any, arg2: any) once -> any {
   return arg1 + arg2
 }
@@ -533,8 +548,8 @@ Target = FunctionDeclaration | VariableDeclaration ;
 HatBlock = Expression BlockStatement ;
 
 (* Statements *)
-Statement = VariableDeclaration | AssignmentStatement | IncrementStatement 
-          | IfStatement | WhileStatement | ForStatement | LoopStatement 
+Statement = VariableDeclaration | AssignmentStatement | IncrementStatement
+          | IfStatement | WhileStatement | ForStatement | LoopStatement
           | ReturnStatement | BlockStatement | ExpressionStatement | NoopStatement ;
 
 AssignmentStatement = Expression AssignmentOperator Expression Eol ;
