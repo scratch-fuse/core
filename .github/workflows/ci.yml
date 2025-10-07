@@ -77,6 +77,7 @@ jobs:
             "scratch-fuse/compiler"
             "scratch-fuse/serializer"
             "scratch-fuse/builtins"
+            "scratch-fuse/lsp"
           )
 
           for repo in "${REPOS[@]}"; do
