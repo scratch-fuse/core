@@ -491,7 +491,9 @@ export class Parser {
         // Constant folding for unary + and -
         if (typeof (operand as LiteralExpression).value === 'number') {
           const foldedValue =
-            op === '-' ? -(operand as LiteralExpression).value : +(operand as LiteralExpression).value
+            op === '-'
+              ? -(operand as LiteralExpression).value
+              : +(operand as LiteralExpression).value
           return {
             type: 'Literal',
             value: foldedValue,
@@ -1350,6 +1352,47 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
   const indentStr = indent > 0 ? ' '.repeat(indent) : ''
   const useSemi = indent === 0 || semi // always use semicolons when minified or when semi is true
 
+  // Operator precedence (higher number = higher precedence)
+  function getPrecedence(node: ASTNode): number {
+    if (node.type === 'BinaryExpression') {
+      const op = (node as BinaryExpression).operator
+      if (op === '||') return 1
+      if (op === '&&') return 2
+      if (op === '==' || op === '!=') return 3
+      if (op === '>' || op === '>=' || op === '<' || op === '<=') return 4
+      if (op === '+' || op === '-' || op === '..') return 5
+      if (op === '*' || op === '/' || op === '%') return 6
+    }
+    if (node.type === 'UnaryExpression') return 7
+    return 100 // Other expressions have highest precedence (no parens needed)
+  }
+
+  function needsParens(
+    parent: ASTNode,
+    child: ASTNode,
+    isLeft: boolean
+  ): boolean {
+    const parentPrec = getPrecedence(parent)
+    const childPrec = getPrecedence(child)
+
+    // Higher precedence child doesn't need parens
+    if (childPrec > parentPrec) return false
+
+    // Lower precedence child always needs parens
+    if (childPrec < parentPrec) return true
+
+    // Same precedence: for binary operators, right side needs parens if not associative
+    // Most binary operators are left-associative, so right side needs parens
+    if (
+      parent.type === 'BinaryExpression' &&
+      child.type === 'BinaryExpression'
+    ) {
+      return !isLeft
+    }
+
+    return false
+  }
+
   function indentLines(str: string, level: number): string {
     if (indent === 0) return str
     const prefix = indentStr.repeat(level)
@@ -1390,14 +1433,29 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
 
       case 'BinaryExpression': {
         const bin = node as BinaryExpression
-        const left = toSourceImpl(bin.left, level)
-        const right = toSourceImpl(bin.right, level)
+        let left = toSourceImpl(bin.left, level)
+        let right = toSourceImpl(bin.right, level)
+
+        // Add parentheses if needed based on precedence
+        if (needsParens(bin, bin.left, true)) {
+          left = `(${left})`
+        }
+        if (needsParens(bin, bin.right, false)) {
+          right = `(${right})`
+        }
+
         return `${left}${sp}${bin.operator}${sp}${right}`
       }
 
       case 'UnaryExpression': {
         const unary = node as UnaryExpression
-        const operand = toSourceImpl(unary.operand, level)
+        let operand = toSourceImpl(unary.operand, level)
+
+        // Add parentheses if operand is a binary expression with lower precedence
+        if (unary.operand.type === 'BinaryExpression') {
+          operand = `(${operand})`
+        }
+
         return `${unary.operator}${operand}`
       }
 
@@ -1562,10 +1620,12 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
         const props = ns.body.properties
           .map(prop => {
             const value = formatNamespaceValue(prop.value, level + 1)
-            return indentLines(`${prop.key}${sp}=${sp}${value}`, level + 1)
+            const line = `${prop.key}${sp}=${sp}${value}`
+            return indent === 0 ? line : indentStr.repeat(level + 1) + line
           })
           .join(nl)
-        return `namespace${ksp}${ns.name}${sp}=${sp}{${nl}${props}${nl}}`
+        const closing = indent === 0 ? '}' : indentStr.repeat(level) + '}'
+        return `namespace${ksp}${ns.name}${sp}=${sp}{${nl}${props}${nl}${closing}`
       }
 
       case 'Program': {
@@ -1596,11 +1656,13 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
       const entries = Object.entries(value)
         .map(([k, v]) => {
           const formattedValue = formatNamespaceValue(v, level + 1)
-          return indentLines(`"${k}":${sp}${formattedValue}`, level + 1)
+          const line = `"${k}":${sp}${formattedValue}`
+          return indent === 0 ? line : indentStr.repeat(level + 1) + line
         })
         .join(`,${nl}`)
       if (entries.length === 0) return '{}'
-      return `{${nl}${entries}${nl}${indentLines('}', level)}`
+      const closing = indent === 0 ? '}' : indentStr.repeat(level) + '}'
+      return `{${nl}${entries}${nl}${closing}`
     }
     return String(value)
   }
