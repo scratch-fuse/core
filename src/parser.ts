@@ -805,7 +805,7 @@ export class Parser {
             args.push({
               type: 'Literal',
               value: token.value,
-              raw: `"${token.value}"`,
+              raw: JSON.stringify(token.value),
               line: token.line,
               column: token.column
             } as LiteralExpression)
@@ -1421,9 +1421,9 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
       case 'Literal': {
         const lit = node as LiteralExpression
         if (typeof lit.value === 'string') {
-          return `"${lit.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+          return lit.raw
         }
-        return String(lit.value)
+        return JSON.stringify(lit.value)
       }
 
       case 'Identifier': {
