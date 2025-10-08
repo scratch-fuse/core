@@ -1,5 +1,3 @@
-import { ErrorList } from '@scratch-fuse/utility'
-
 export enum TokenType {
   Number = 'Number',
   String = 'String',
@@ -91,29 +89,7 @@ export class Lexer {
     this.column = 1
   }
 
-  public all(): Token[] {
-    const tokens: Token[] = []
-    const errors: Error[] = []
-    while (true) {
-      try {
-        const token = this.next()
-        tokens.push(token)
-      } catch (e) {
-        if (e instanceof LexerError) {
-          errors.push(e)
-        } else {
-          throw e
-        }
-      }
-      if (this.isAtEnd()) break
-    }
-    if (errors.length > 0) {
-      throw new ErrorList(errors)
-    }
-    return tokens
-  }
-
-  private isAtEnd(): boolean {
+  public isAtEnd(): boolean {
     return this.pos >= this.input.length
   }
 

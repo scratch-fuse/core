@@ -1,5 +1,5 @@
-import { Token, TokenType } from './lexer'
-import { ErrorList } from '@scratch-fuse/utility'
+import { Token, TokenType, Lexer } from './lexer'
+import { ErrorList, sanitize } from '@scratch-fuse/utility'
 
 // AST Node Types
 export interface ASTNode {
@@ -181,25 +181,51 @@ export interface Program extends ASTNode {
 
 // Parser Class
 export class Parser {
-  private current: number = 0
+  private previousToken: Token | null = null
+  private currentToken: Token | null = null
+  private nextToken: Token | null = null
 
-  constructor(private tokens: Token[]) {}
+  constructor(private lexer: Lexer) {
+    // Initialize: load first token into current, second into next
+    this.loadNextToken() // Load first token into nextToken
+    this.currentToken = this.nextToken // Move to currentToken
+    this.loadNextToken() // Load second token into nextToken
+  }
 
-  public reset(tokens?: Token[]) {
-    this.current = 0
-    if (tokens) this.tokens = tokens
+  public reset(lexer?: Lexer) {
+    this.previousToken = null
+    this.currentToken = null
+    this.nextToken = null
+    if (lexer) {
+      this.lexer = lexer
+    }
+    // Reset lexer to beginning
+    this.lexer.reset()
+    // Initialize: load first token into current, second into next
+    this.loadNextToken() // Load first token into nextToken
+    this.currentToken = this.nextToken // Move to currentToken
+    this.loadNextToken() // Load second token into nextToken
+  }
+
+  private loadNextToken(): void {
+    // Skip comments and load next meaningful token
+    do {
+      if (this.lexer.isAtEnd()) {
+        this.nextToken = null
+        return
+      }
+      this.nextToken = this.lexer.next()
+    } while (
+      this.nextToken.type === TokenType.Comment ||
+      (this.nextToken.type === TokenType.Eol && this.nextToken.value !== ';')
+    )
   }
 
   private isEof(): boolean {
-    return this.current >= this.tokens.length
-  }
-
-  private peekRaw(): Token {
-    return this.tokens[this.current]
+    return this.currentToken === null && this.lexer.isAtEnd()
   }
 
   private peek(): Token {
-    this.skipComments()
     if (this.isEof()) {
       // Return a dummy EOF token instead of throwing
       return {
@@ -209,41 +235,51 @@ export class Parser {
         column: 0
       }
     }
-    return this.tokens[this.current]
+    return this.currentToken!
   }
 
   private previous(): Token {
-    if (this.current <= 0) {
+    if (!this.previousToken) {
       throw new ParserError(
         'Cannot get previous token at beginning of input',
         0,
         0
       )
     }
-    return this.tokens[this.current - 1]
+    return this.previousToken
   }
 
   private advance(): Token {
-    if (!this.isEof()) this.current++
-    return this.previous()
+    const prev = this.currentToken
+    if (!this.isEof()) {
+      this.previousToken = this.currentToken
+      this.currentToken = this.nextToken
+      this.loadNextToken()
+    }
+    // Return the token that was current before advancing
+    // This handles the case when previousToken is null at the beginning
+    return prev || this.peek()
   }
 
   private skipComments(): void {
-    while (
-      this.current < this.tokens.length &&
-      (this.tokens[this.current].type === TokenType.Comment ||
-        this.tokens[this.current].type === TokenType.Eol)
-    ) {
-      this.current++
-    }
+    // Comments are already skipped in loadNextToken
+    // This method is kept for compatibility but does nothing
   }
 
   private _matchBase(type: TokenType, values: string[]): boolean {
-    return !!(this._checkBase(type, values) && ++this.current)
+    if (this._checkBase(type, values)) {
+      this.advance()
+      return true
+    }
+    return false
   }
 
   private match(...types: TokenType[]): boolean {
-    return !!(this.check(...types) && ++this.current)
+    if (this.check(...types)) {
+      this.advance()
+      return true
+    }
+    return false
   }
 
   private matchOperator(...values: string[]): boolean {
@@ -296,7 +332,7 @@ export class Parser {
     }
     while (!this.isEof()) {
       // Check if we can safely call previous()
-      if (this.current > 0 && this.previous().type === TokenType.Eol) return
+      if (this.previousToken && this.previous().type === TokenType.Eol) return
 
       if (!this.isEof()) {
         switch (this.peek().type) {
@@ -555,9 +591,11 @@ export class Parser {
           line: expr.line,
           column: expr.column
         } as MemberExpression
-      } else if (this.matchPunctuation('{')) {
-        // Just then, no arguments
-        this.current--
+      } else if (
+        this.check(TokenType.Punctuation) &&
+        this.peek().value === '{'
+      ) {
+        // Just then, no arguments (don't consume the '{', let parseBlockStatement do it)
         const thenBlock = this.parseBlockStatement()
         expr = {
           type: 'CallExpression',
@@ -596,28 +634,27 @@ export class Parser {
   }
 
   private parsePrimary(): Expression {
-    if (this.match(TokenType.Keyword)) {
+    // Check for boolean literals
+    if (this.matchKeyword('true')) {
       const keyword = this.previous()
-      if (keyword.value === 'true') {
-        return {
-          type: 'Literal',
-          value: true,
-          raw: 'true',
-          line: keyword.line,
-          column: keyword.column
-        } as LiteralExpression
-      }
-      if (keyword.value === 'false') {
-        return {
-          type: 'Literal',
-          value: false,
-          raw: 'false',
-          line: keyword.line,
-          column: keyword.column
-        } as LiteralExpression
-      }
-      // Put the token back if it's not a literal
-      this.current--
+      return {
+        type: 'Literal',
+        value: true,
+        raw: 'true',
+        line: keyword.line,
+        column: keyword.column
+      } as LiteralExpression
+    }
+
+    if (this.matchKeyword('false')) {
+      const keyword = this.previous()
+      return {
+        type: 'Literal',
+        value: false,
+        raw: 'false',
+        line: keyword.line,
+        column: keyword.column
+      } as LiteralExpression
     }
 
     if (this.match(TokenType.Number)) {
@@ -637,6 +674,17 @@ export class Parser {
         type: 'Literal',
         value: token.value,
         raw: `"${token.value}"`,
+        line: token.line,
+        column: token.column
+      } as LiteralExpression
+    }
+
+    if (this.matchIdentifier('Infinity', 'NaN')) {
+      const token = this.previous()
+      return {
+        type: 'Literal',
+        value: token.value === 'Infinity' ? Infinity : NaN,
+        raw: token.value,
         line: token.line,
         column: token.column
       } as LiteralExpression
@@ -713,10 +761,6 @@ export class Parser {
             return this.parseFunctionDeclaration()
           case 'namespace':
             return this.parseNamespaceDeclaration()
-          default:
-            // Put the token back and try to parse as expression statement
-            this.current--
-            return this.parseExpressionStatement()
         }
       }
 
@@ -724,51 +768,60 @@ export class Parser {
         return this.parseDecoratorStatement()
       }
 
-      // Check for assignment
-      const checkpoint = this.current
-      try {
-        if (this.matchOperator('++', '--')) {
-          const operator = this.previous().value
-          const expr = this.parseExpression()
-          return {
-            type: 'IncrementStatement',
-            operator,
-            target: expr,
-            line: expr.line,
-            column: expr.column
-          } as IncrementStatement
-        }
-        const expr = this.parseExpression()
-        if (this.matchOperator('=', '+=', '-=', '*=', '/=', '%=', '..=')) {
-          const operator = this.previous().value
-          const right = this.parseExpression()
-          // this.consumeStatementTerminator()
-          return {
-            type: 'AssignmentStatement',
-            left: expr,
-            operator,
-            right,
-            line: expr.line,
-            column: expr.column
-          } as AssignmentStatement
-        } else if (this.matchOperator('++', '--')) {
-          const operator = this.previous().value
-          // this.consumeStatementTerminator()
-          return {
-            type: 'IncrementStatement',
-            operator,
-            target: expr as IdentifierExpression,
-            line: expr.line,
-            column: expr.column
-          } as IncrementStatement
-        }
-        // Not an assignment, treat as expression statement
-        this.current = checkpoint
-        return this.parseExpressionStatement()
-      } catch {
-        this.current = checkpoint
-        return this.parseExpressionStatement()
+      if (this.check(TokenType.Eol) && this.peek().value === ';') {
+        const token = this.advance()
+        return {
+          type: 'NoopStatement',
+          line: token.line,
+          column: token.column
+        } as NoopStatement
       }
+
+      // Check for prefix increment/decrement or assignment
+      if (this.matchOperator('++', '--')) {
+        const operator = this.previous().value
+        const expr = this.parseExpression()
+        return {
+          type: 'IncrementStatement',
+          operator,
+          target: expr,
+          line: expr.line,
+          column: expr.column
+        } as IncrementStatement
+      }
+
+      // Parse expression, then check for assignment or postfix increment
+      const expr = this.parseExpression()
+
+      if (this.matchOperator('=', '+=', '-=', '*=', '/=', '%=', '..=')) {
+        const operator = this.previous().value
+        const right = this.parseExpression()
+        return {
+          type: 'AssignmentStatement',
+          left: expr,
+          operator,
+          right,
+          line: expr.line,
+          column: expr.column
+        } as AssignmentStatement
+      } else if (this.matchOperator('++', '--')) {
+        const operator = this.previous().value
+        return {
+          type: 'IncrementStatement',
+          operator,
+          target: expr as IdentifierExpression,
+          line: expr.line,
+          column: expr.column
+        } as IncrementStatement
+      }
+
+      // Just an expression statement
+      return {
+        type: 'ExpressionStatement',
+        expression: expr,
+        line: expr.line,
+        column: expr.column
+      } as ExpressionStatement
     } catch (error) {
       this.synchronize()
       throw error
@@ -805,7 +858,7 @@ export class Parser {
             args.push({
               type: 'Literal',
               value: token.value,
-              raw: JSON.stringify(token.value),
+              raw: sanitize(token.value),
               line: token.line,
               column: token.column
             } as LiteralExpression)
@@ -914,7 +967,7 @@ export class Parser {
 
     // Parse init statement (can be variable declaration or assignment)
     let init: Statement | undefined
-    if (!this.check(TokenType.Punctuation) || this.peek().value !== ';') {
+    if (!this.check(TokenType.Eol) || this.peek().value !== ';') {
       init = this.parseStatement()
       if (!['AssignmentStatement', 'IncrementStatement'].includes(init.type)) {
         throw new ParserError(
@@ -929,7 +982,7 @@ export class Parser {
 
     // Parse condition expression
     let condition: Expression | undefined
-    if (!this.check(TokenType.Punctuation) || this.peek().value !== ';') {
+    if (!this.check(TokenType.Eol) || this.peek().value !== ';') {
       condition = this.parseExpression()
     } else {
       this.advance() // consume ';'
@@ -937,7 +990,7 @@ export class Parser {
 
     // Parse increment statement
     let increment: Statement | undefined
-    if (!this.check(TokenType.Punctuation) || this.peek().value !== ')') {
+    if (!this.check(TokenType.Eol) || this.peek().value !== ')') {
       increment = this.parseStatement()
       if (
         !['AssignmentStatement', 'IncrementStatement'].includes(increment.type)
@@ -1039,7 +1092,7 @@ export class Parser {
       return this.parseBlockStatement()
     }
     // If we see a ';', parse as noop statement
-    if (this.check(TokenType.Punctuation) && this.peek().value === ';') {
+    if (this.check(TokenType.Eol) && this.peek().value === ';') {
       const token = this.advance()
       return {
         type: 'NoopStatement',
@@ -1278,23 +1331,16 @@ export class Parser {
   // Error handling and recovery
   private parseDeclaration(): Statement {
     try {
-      // Check for namespace declaration
+      // Check for namespace declaration: identifier = {
+      // We need lookahead to distinguish from regular statements
       if (this.check(TokenType.Identifier)) {
-        const checkpoint = this.current
-        const name = this.advance().value
+        // Peek ahead to see if this looks like: name = {
+        // Since we can't backtrack, we check before consuming
+        const currentPeek = this.peek()
 
-        if (this.matchOperator('=')) {
-          if (this.check(TokenType.Punctuation) && this.peek().value === '{') {
-            // This is a namespace declaration
-            this.current = checkpoint
-            const nameToken = this.advance()
-            this.advance() // consume '='
-            return this.parseNamespaceDeclaration()
-          }
-        }
-
-        // Reset and parse as regular statement
-        this.current = checkpoint
+        // Try to determine if this is a namespace by looking at the pattern
+        // For now, let's be conservative and require 'namespace' keyword
+        // This avoids the need for complex lookahead
       }
 
       return this.parseStatement()
@@ -1423,7 +1469,7 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
         if (typeof lit.value === 'string') {
           return lit.raw
         }
-        return JSON.stringify(lit.value)
+        return sanitize(lit.value)
       }
 
       case 'Identifier': {
@@ -1494,7 +1540,7 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
 
       // Statements
       case 'NoopStatement': {
-        return useSemi ? ';' : ''
+        return ';'
       }
 
       case 'ExpressionStatement': {
