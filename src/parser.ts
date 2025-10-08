@@ -388,6 +388,10 @@ export class Parser {
     return this._consumeBase(TokenType.Keyword, value, message)
   }
 
+  private consumeEol(value: string, message: string): Token {
+    return this._consumeBase(TokenType.Eol, value, message)
+  }
+
   private consumeOperator(value: string, message: string): Token {
     return this._consumeBase(TokenType.Operator, value, message)
   }
@@ -976,6 +980,7 @@ export class Parser {
           start.column
         )
       }
+      this.consumeEol(';', "Expected ';' after for init")
     } else {
       this.advance() // consume ';'
     }
@@ -984,6 +989,7 @@ export class Parser {
     let condition: Expression | undefined
     if (!this.check(TokenType.Eol) || this.peek().value !== ';') {
       condition = this.parseExpression()
+      this.consumeEol(';', "Expected ';' after for condition")
     } else {
       this.advance() // consume ';'
     }
@@ -996,7 +1002,7 @@ export class Parser {
         !['AssignmentStatement', 'IncrementStatement'].includes(increment.type)
       ) {
         throw new ParserError(
-          'For loop increment must be an increment statement',
+          'For loop increment must be an assignment or increment statement',
           start.line,
           start.column
         )
