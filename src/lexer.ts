@@ -29,7 +29,9 @@ const keywords = new Set([
   'true',
   'false',
   'once',
-  'namespace'
+  'module',
+  'extern',
+  'import'
 ])
 
 const operators = new Set([

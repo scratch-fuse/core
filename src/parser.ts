@@ -11,10 +11,11 @@ export interface ASTNode {
 export class ParserError extends Error {
   constructor(
     message: string,
-    public line: number,
-    public column: number
+    public token: Token
   ) {
-    super(`${message} at ${line}:${column}`)
+    super(
+      `${message} at ${token.line}:${token.column}-${token.line + token.value.length}`
+    )
     this.name = 'ParserError'
   }
 }
@@ -155,22 +156,25 @@ export interface FunctionDeclaration extends Statement {
   body: BlockStatement
 }
 
-// Namespace and Event Handling
-export interface NamespaceDeclaration extends Statement {
-  type: 'NamespaceDeclaration'
-  name: string
-  body: NamespaceBody
+// Extern Declaration
+export interface ExternDeclaration extends Statement {
+  type: 'ExternDeclaration'
+  name: IdentifierExpression
+  value: any // JSON-like value
 }
 
-export interface NamespaceBody extends ASTNode {
-  type: 'NamespaceBody'
-  properties: NamespaceProperty[]
+// Module Declaration
+export interface ModuleDeclaration extends Statement {
+  type: 'ModuleDeclaration'
+  name: IdentifierExpression
+  body?: Statement[] // undefined for alias
+  alias?: Expression // for alias syntax: module B = A (supports member expressions like A.B.C)
 }
 
-export interface NamespaceProperty extends ASTNode {
-  type: 'NamespaceProperty'
-  key: string
-  value: any // Can be objects, arrays, etc.
+// Import Statement
+export interface ImportStatement extends Statement {
+  type: 'ImportStatement'
+  path: LiteralExpression
 }
 
 // Program root
@@ -242,8 +246,7 @@ export class Parser {
     if (!this.previousToken) {
       throw new ParserError(
         'Cannot get previous token at beginning of input',
-        0,
-        0
+        this.peek()
       )
     }
     return this.previousToken
@@ -348,7 +351,10 @@ export class Parser {
                 'for',
                 'until',
                 'loop',
-                'return'
+                'return',
+                'extern',
+                'module',
+                'import'
               ].includes(keyword)
             ) {
               return
@@ -367,18 +373,20 @@ export class Parser {
     const token = this.peek()
     throw new ParserError(
       `${message}. Got ${token.type} (${token.value})`,
-      token.line,
-      token.column
+      token
     )
   }
 
   private _consumeBase(type: TokenType, value: string, message: string): Token {
     if (this.isEof()) {
-      throw new ParserError(`${message}. Unexpected end of input`, 0, 0)
+      throw new ParserError(
+        `${message}. Unexpected end of input`,
+        this.previous()
+      )
     }
     const v = this.peek()
     if (!this.check(type) || v.value !== value) {
-      throw new ParserError(`${message}. Got ${v.value}`, v.line, v.column)
+      throw new ParserError(`${message}. Got ${v.value}`, v)
     }
     this.advance()
     return v
@@ -717,8 +725,7 @@ export class Parser {
     const token = this.peek()
     throw new ParserError(
       `Unexpected token ${token.type}: ${token.value}`,
-      token.line,
-      token.column
+      token
     )
   }
 
@@ -763,8 +770,12 @@ export class Parser {
             return this.parseReturnStatement()
           case 'fn':
             return this.parseFunctionDeclaration()
-          case 'namespace':
-            return this.parseNamespaceDeclaration()
+          case 'extern':
+            return this.parseExternDeclaration()
+          case 'module':
+            return this.parseModuleDeclaration()
+          case 'import':
+            return this.parseImportStatement()
         }
       }
 
@@ -879,17 +890,12 @@ export class Parser {
             } else {
               throw new ParserError(
                 `Invalid decorator argument ${token.value}`,
-                token.line,
-                token.column
+                token
               )
             }
           } else {
             const token = this.peek()
-            throw new ParserError(
-              `Invalid decorator argument`,
-              token.line,
-              token.column
-            )
+            throw new ParserError(`Invalid decorator argument`, token)
           }
         } while (this.matchPunctuation(','))
       }
@@ -976,8 +982,7 @@ export class Parser {
       if (!['AssignmentStatement', 'IncrementStatement'].includes(init.type)) {
         throw new ParserError(
           'For loop init must be an assignment or increment statement',
-          start.line,
-          start.column
+          start
         )
       }
       this.consumeEol(';', "Expected ';' after for init")
@@ -1003,8 +1008,7 @@ export class Parser {
       ) {
         throw new ParserError(
           'For loop increment must be an assignment or increment statement',
-          start.line,
-          start.column
+          start
         )
       }
     }
@@ -1067,7 +1071,7 @@ export class Parser {
 
     while (!this.check(TokenType.Punctuation) || this.peek().value !== '}') {
       if (this.isEof()) {
-        throw new ParserError(`Unterminated block`, start.line, start.column)
+        throw new ParserError(`Unterminated block`, start)
       }
       statements.push(this.parseStatement())
     }
@@ -1193,67 +1197,139 @@ export class Parser {
     } as FunctionDeclaration
   }
 
-  // Namespace and event parsing
-  private parseNamespaceDeclaration(): NamespaceDeclaration {
+  // Extern declaration parsing
+  private parseExternDeclaration(): ExternDeclaration {
     const name = this.consume(
       TokenType.Identifier,
-      'Expected namespace name'
-    ).value
-    this.consumeOperator('=', "Expected '=' after namespace name")
-    this.consumePunctuation('{', "Expected '{' after '='")
+      'Expected extern variable name'
+    )
 
-    const properties: NamespaceProperty[] = []
+    this.consumeOperator('=', "Expected '=' after extern name")
+
+    const value = this.parseJSONValue()
+
+    return {
+      type: 'ExternDeclaration',
+      name: {
+        type: 'Identifier',
+        name: name.value,
+        line: name.line,
+        column: name.column
+      },
+      value,
+      line: this.previous().line,
+      column: this.previous().column
+    } as ExternDeclaration
+  }
+
+  // Module declaration parsing
+  private parseModuleDeclaration(): ModuleDeclaration {
+    const start = this.previous()
+    const nameToken = this.consume(TokenType.Identifier, 'Expected module name')
+
+    // Check for alias syntax: module B = A (with member access support like A.B.C)
+    if (this.matchOperator('=')) {
+      const alias = this.parseTypeExpression()
+      return {
+        type: 'ModuleDeclaration',
+        name: {
+          type: 'Identifier',
+          name: nameToken.value,
+          line: nameToken.line,
+          column: nameToken.column
+        },
+        alias,
+        line: start.line,
+        column: start.column
+      } as ModuleDeclaration
+    }
+
+    // Regular module with body
+    this.consumePunctuation('{', "Expected '{' after module name")
+    const body: Statement[] = []
 
     while (!this.check(TokenType.Punctuation) || this.peek().value !== '}') {
       if (this.isEof()) {
-        throw new ParserError(
-          'Unterminated namespace',
-          this.previous().line,
-          this.previous().column
-        )
+        throw new ParserError('Unterminated module', start)
       }
-
-      // Skip any newlines before property
-      this.skipComments()
-      if (this.check(TokenType.Punctuation) && this.peek().value === '}') {
-        break
-      }
-
-      const key = this.consume(
-        TokenType.Identifier,
-        'Expected property name'
-      ).value
-      this.consumeOperator('=', "Expected '=' after property name")
-
-      // Parse the property value (can be complex JSON-like structure)
-      const value = this.parseNamespaceValue()
-
-      properties.push({
-        type: 'NamespaceProperty',
-        key,
-        value,
-        line: this.previous().line,
-        column: this.previous().column
-      })
+      body.push(this.parseStatement())
     }
 
-    this.consumePunctuation('}', "Expected '}' after namespace body")
+    this.consumePunctuation('}', "Expected '}' after module body")
 
     return {
-      type: 'NamespaceDeclaration',
-      name,
-      body: {
-        type: 'NamespaceBody',
-        properties,
-        line: this.previous().line,
-        column: this.previous().column
+      type: 'ModuleDeclaration',
+      name: {
+        type: 'Identifier',
+        name: nameToken.value,
+        line: nameToken.line,
+        column: nameToken.column
       },
-      line: this.previous().line,
-      column: this.previous().column
-    } as NamespaceDeclaration
+      body,
+      line: start.line,
+      column: start.column
+    } as ModuleDeclaration
   }
 
-  private parseNamespaceValue(): any {
+  // Parse type expression (identifier with optional member access like A.B.C)
+  // Used for module aliases, impl extends, and as operator
+  private parseTypeExpression(): Expression {
+    const start = this.consume(TokenType.Identifier, 'Expected type name')
+    let expr: Expression = {
+      type: 'Identifier',
+      name: start.value,
+      line: start.line,
+      column: start.column
+    } as IdentifierExpression
+
+    // Parse member access chains (A.B.C)
+    while (this.matchOperator('.')) {
+      const property = this.consume(
+        TokenType.Identifier,
+        "Expected property name after '.'"
+      )
+      expr = {
+        type: 'MemberExpression',
+        object: expr,
+        property: {
+          type: 'Identifier',
+          name: property.value,
+          line: property.line,
+          column: property.column
+        } as IdentifierExpression,
+        computed: false,
+        line: expr.line,
+        column: expr.column
+      } as MemberExpression
+    }
+
+    return expr
+  }
+
+  // Import statement parsing
+  private parseImportStatement(): ImportStatement {
+    const start = this.previous()
+    const pathToken = this.consume(
+      TokenType.String,
+      'Expected string literal path after import'
+    )
+
+    return {
+      type: 'ImportStatement',
+      path: {
+        type: 'Literal',
+        value: pathToken.value,
+        raw: sanitize(pathToken.value),
+        line: pathToken.line,
+        column: pathToken.column
+      },
+      line: start.line,
+      column: start.column
+    } as ImportStatement
+  }
+
+  // Helper method to parse JSON-like values for extern
+  private parseJSONValue(): any {
     if (this.matchPunctuation('{')) {
       // Parse object
       const obj: any = {}
@@ -1265,19 +1341,26 @@ export class Parser {
           break
         }
 
-        const key = this.consume(
-          TokenType.String,
-          'Expected property key'
-        ).value
+        // Key can be string or identifier
+        let key: string
+        if (this.match(TokenType.String)) {
+          key = this.previous().value
+        } else if (this.match(TokenType.Identifier)) {
+          key = this.previous().value
+        } else {
+          const token = this.peek()
+          throw new ParserError('Expected property key', token)
+        }
+
         this.consumePunctuation(':', "Expected ':' after key")
-        const value = this.parseNamespaceValue()
+        const value = this.parseJSONValue()
         obj[key] = value
 
-        // Optional comma and newlines
+        // Optional comma
         if (this.check(TokenType.Punctuation) && this.peek().value === ',') {
           this.advance()
         }
-        this.skipComments() // Skip newlines after comma
+        this.skipComments()
       }
 
       this.consumePunctuation('}', "Expected '}' after object")
@@ -1289,7 +1372,7 @@ export class Parser {
       const arr: any[] = []
 
       while (!this.check(TokenType.Punctuation) || this.peek().value !== ']') {
-        arr.push(this.parseNamespaceValue())
+        arr.push(this.parseJSONValue())
 
         if (this.check(TokenType.Punctuation) && this.peek().value === ',') {
           this.advance()
@@ -1308,12 +1391,6 @@ export class Parser {
       return parseFloat(this.previous().value)
     }
 
-    if (this.match(TokenType.Keyword)) {
-      const keyword = this.previous().value
-      if (keyword === 'true') return true
-      if (keyword === 'false') return false
-    }
-
     if (this.matchKeyword('true')) {
       return true
     }
@@ -1328,27 +1405,14 @@ export class Parser {
 
     const token = this.peek()
     throw new ParserError(
-      `Unexpected token in namespace value: ${token.value}`,
-      token.line,
-      token.column
+      `Unexpected token in JSON value: ${token.value}`,
+      token
     )
   }
 
   // Error handling and recovery
   private parseDeclaration(): Statement {
     try {
-      // Check for namespace declaration: identifier = {
-      // We need lookahead to distinguish from regular statements
-      if (this.check(TokenType.Identifier)) {
-        // Peek ahead to see if this looks like: name = {
-        // Since we can't backtrack, we check before consuming
-        const currentPeek = this.peek()
-
-        // Try to determine if this is a namespace by looking at the pattern
-        // For now, let's be conservative and require 'namespace' keyword
-        // This avoids the need for complex lookahead
-      }
-
       return this.parseStatement()
     } catch (error) {
       this.synchronize()
@@ -1415,6 +1479,7 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
       if (op === '+' || op === '-' || op === '..') return 5
       if (op === '*' || op === '/' || op === '%') return 6
     }
+    if (node.type === 'AsExpression') return 3.5 // Between equality and comparison
     if (node.type === 'UnaryExpression') return 7
     return 100 // Other expressions have highest precedence (no parens needed)
   }
@@ -1667,17 +1732,33 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
         return `fn${ksp}${name}(${params})${once}${sp}->${sp}${returnType}${sp}${body}`
       }
 
-      case 'NamespaceDeclaration': {
-        const ns = node as NamespaceDeclaration
-        const props = ns.body.properties
-          .map(prop => {
-            const value = formatNamespaceValue(prop.value, level + 1)
-            const line = `${prop.key}${sp}=${sp}${value}`
-            return indent === 0 ? line : indentStr.repeat(level + 1) + line
-          })
-          .join(nl)
-        const closing = indent === 0 ? '}' : indentStr.repeat(level) + '}'
-        return `namespace${ksp}${ns.name}${sp}=${sp}{${nl}${props}${nl}${closing}`
+      case 'ExternDeclaration': {
+        const ext = node as ExternDeclaration
+        const value = formatJSONValue(ext.value, level + 1)
+        const stmt = `extern${ksp}${ext.name.name}${sp}=${sp}${value}`
+        return useSemi ? stmt + ';' : stmt
+      }
+
+      case 'ModuleDeclaration': {
+        const mod = node as ModuleDeclaration
+        if (mod.alias) {
+          // Alias syntax - alias can now be any expression (including member expressions)
+          const aliasStr = toSourceImpl(mod.alias, level)
+          const stmt = `module${ksp}${mod.name.name}${sp}=${sp}${aliasStr}`
+          return useSemi ? stmt + ';' : stmt
+        }
+        // Regular module with body
+        if (!mod.body || mod.body.length === 0) {
+          return `module${ksp}${mod.name.name}${sp}{}`
+        }
+        const body = formatBlock(mod.body, level + 1)
+        return `module${ksp}${mod.name.name}${sp}{${nl}${body}${nl}${indentLines('}', level)}`
+      }
+
+      case 'ImportStatement': {
+        const imp = node as ImportStatement
+        const stmt = `import${ksp}${imp.path.raw}`
+        return useSemi ? stmt + ';' : stmt
       }
 
       case 'Program': {
@@ -1690,7 +1771,7 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
     }
   }
 
-  function formatNamespaceValue(value: any, level: number): string {
+  function formatJSONValue(value: any, level: number): string {
     if (value === null) return 'null'
     if (value === true) return 'true'
     if (value === false) return 'false'
@@ -1699,21 +1780,22 @@ export function toSource(node: ASTNode, indent = 2, semi = false): string {
       return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
     }
     if (Array.isArray(value)) {
-      const elements = value
-        .map(v => formatNamespaceValue(v, level))
-        .join(`,${sp}`)
+      const elements = value.map(v => formatJSONValue(v, level)).join(`,${sp}`)
       return `[${elements}]`
     }
     if (typeof value === 'object') {
       const entries = Object.entries(value)
         .map(([k, v]) => {
-          const formattedValue = formatNamespaceValue(v, level + 1)
-          const line = `"${k}":${sp}${formattedValue}`
-          return indent === 0 ? line : indentStr.repeat(level + 1) + line
+          const formattedValue = formatJSONValue(v, level + 1)
+          // Check if key needs quotes (if it's not a valid identifier)
+          const needsQuotes = !/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k)
+          const keyStr = needsQuotes ? `"${k}"` : k
+          const line = `${keyStr}:${sp}${formattedValue}`
+          return indent === 0 ? line : indentStr.repeat(level) + line
         })
         .join(`,${nl}`)
       if (entries.length === 0) return '{}'
-      const closing = indent === 0 ? '}' : indentStr.repeat(level) + '}'
+      const closing = indent === 0 ? '}' : indentStr.repeat(level - 1) + '}'
       return `{${nl}${entries}${nl}${closing}`
     }
     return String(value)
